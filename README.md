@@ -1,6 +1,6 @@
 # Inventory System Showcase (Unreal Engine 5)
 
-> **Note:** This repository is a **C++ Code Showcase** and a portfolio piece extracted from a custom AAA-standard RPG project. All core files have been placed directly in the root directory for easy, immediate code review.
+> **Note:** This repository is a **C++ Code Showcase** and a portfolio piece extracted from a custom my RPG project. All core files have been placed directly in the root directory for easy, immediate code review.
 
 ## 📌 Architectural Overview
 
