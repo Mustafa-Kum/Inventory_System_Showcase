@@ -9,14 +9,14 @@
 
 <div align="center">
   <div align="center">
+  <img src="Gifs/ItemDetail.gif" width="80%">
+  <p><em>Dynamic tooltip driven by Data Assets.</em></p>
+  
   <img src="Gifs/ItemEquip.gif" width="80%">
   <p><em>Equipping items with instant UI update.</em></p>
 
   <img src="Gifs/ItemUnequip.gif" width="80%">
   <p><em>Unequipping flow with state synchronization.</em></p>
-
-  <img src="Gifs/ItemDetail.gif" width="80%">
-  <p><em>Dynamic tooltip driven by Data Assets.</em></p>
 </div>
   <p><em>Event-driven UI updates, drag & drop interactions, and dynamic tooltip system.</em></p>
 </div>
