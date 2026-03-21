@@ -106,38 +106,38 @@ void UInventoryWidget::InitializeEquipmentSlots()
 	if (!InventoryComp) return;
 
 	// AAA Direct Assignments: Guarantees correct routing regardless of initialization timing
-	if (HelmSlot) HelmSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (NecklaceSlot) NecklaceSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (ChestSlot) ChestSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (CloakSlot) CloakSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (BeltSlot) BeltSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
+	if (HelmSlot) HelmSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Helm), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Helm);
+	if (NecklaceSlot) NecklaceSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Necklace), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Necklace);
+	if (ChestSlot) ChestSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Chest), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Chest);
+	if (CloakSlot) CloakSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Cloak), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Cloak);
+	if (BeltSlot) BeltSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Belt), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Belt);
 
 	// The Main Hand gets the actually equipped weapon
-	if (MainHandSlot) MainHandSlot->InitializeSlot(InventoryComp->EquippedWeaponData.Get(), -1, InventoryComp, EItemSlotContext::Equipment);
+	if (MainHandSlot) MainHandSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::MainHand), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::MainHand);
 
-	if (OffHandSlot) OffHandSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (LeftRingSlot) LeftRingSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (RightRingSlot) RightRingSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (GauntletsSlot) GauntletsSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (LeggingsSlot) LeggingsSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
-	if (BootsSlot) BootsSlot->InitializeSlot(nullptr, -1, InventoryComp, EItemSlotContext::Equipment);
+	if (OffHandSlot) OffHandSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::OffHand), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::OffHand);
+	if (LeftRingSlot) LeftRingSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::LeftRing), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::LeftRing);
+	if (RightRingSlot) RightRingSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::RightRing), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::RightRing);
+	if (GauntletsSlot) GauntletsSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Gauntlets), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Gauntlets);
+	if (LeggingsSlot) LeggingsSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Leggings), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Leggings);
+	if (BootsSlot) BootsSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Boots), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Boots);
 }
 
 void UInventoryWidget::PopulateBackpackGrid()
 {
 	for (int32 i = 0; i < TotalBackpackSlots; ++i)
 	{
-		UWeaponDataAsset* WeaponData = InventoryComp->WeaponInventory.IsValidIndex(i) ? InventoryComp->WeaponInventory[i] : nullptr;
-		CreateAndAddBackpackSlot(WeaponData, i);
+		UItemDataAsset* ItemData = InventoryComp->InventorySlots.IsValidIndex(i) ? InventoryComp->InventorySlots[i].ItemData : nullptr;
+		CreateAndAddBackpackSlot(ItemData, i);
 	}
 }
 
-void UInventoryWidget::CreateAndAddBackpackSlot(UWeaponDataAsset* WeaponData, int32 SlotIndex)
+void UInventoryWidget::CreateAndAddBackpackSlot(UItemDataAsset* ItemData, int32 SlotIndex)
 {
 	UWeaponSlotWidget* NewSlot = CreateWidget<UWeaponSlotWidget>(GetOwningPlayer(), WeaponSlotClass);
 	if (!NewSlot) return;
 
-	NewSlot->InitializeSlot(WeaponData, SlotIndex, InventoryComp, EItemSlotContext::Inventory);
+	NewSlot->InitializeSlot(ItemData, SlotIndex, InventoryComp, EItemSlotContext::Inventory, EEquipmentSlot::None);
 	
 	UWrapBoxSlot* WrapBoxSlot = InventoryGrid->AddChildToWrapBox(NewSlot);
 	if (WrapBoxSlot)

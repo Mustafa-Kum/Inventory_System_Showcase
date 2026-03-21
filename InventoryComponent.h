@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "DataAssets/ItemDataAsset.h"
 #include "DataAssets/WeaponDataAsset.h"
 #include "InventoryComponent.generated.h"
 
@@ -10,16 +11,14 @@ class ACharacterBase;
 class AWeaponBase;
 
 // --- WEAPON EQUIP STATE MACHINE ---
-// Prevents double-press, race conditions, and state desync during equip/unequip animations
 UENUM(BlueprintType)
 enum class EWeaponEquipState : uint8
 {
-	Idle			UMETA(DisplayName = "Idle"),			// No weapon action in progress (ready for input)
-	Equipping		UMETA(DisplayName = "Equipping"),		// Playing equip animation
-	Unequipping		UMETA(DisplayName = "Unequipping")		// Playing unequip animation
+	Idle			UMETA(DisplayName = "Idle"),
+	Equipping		UMETA(DisplayName = "Equipping"),
+	Unequipping		UMETA(DisplayName = "Unequipping")
 };
 
-// Delegate used to notify the UI when the inventory changes
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -36,105 +35,82 @@ protected:
 
 public:	
 	/** --- CORE DATA --- */
-
-	// Initial weapon added to bag at start
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Inventory")
-	TObjectPtr<UWeaponDataAsset> DefaultStartingWeapon;
+	TObjectPtr<UItemDataAsset> DefaultStartingItem;
 
-	// Actual inventory storage
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TArray<TObjectPtr<UWeaponDataAsset>> WeaponInventory;
+	TArray<FInventoryItem> InventorySlots;
 
-	// Total backpack size
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
 	int32 MaxInventorySlots = 20;
 
-	// Currently active weapon data
+	// AAA RPG Multi-Slot Backend
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-	TObjectPtr<UWeaponDataAsset> EquippedWeaponData;
+	TMap<EEquipmentSlot, TObjectPtr<UItemDataAsset>> EquippedItems;
 
-	// Prevents animation race conditions
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	EWeaponEquipState WeaponEquipState = EWeaponEquipState::Idle;
 
-	/** --- PUBLIC API (Orchestrators) --- */
-
-	// Entry point for adding/moving weapons
+	/** --- PUBLIC API --- */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void SetWeaponAtIndex(UWeaponDataAsset* Weapon, int32 Index);
+	void SetItemAtIndex(UItemDataAsset* Item, int32 Quantity, int32 Index);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void AddWeapon(UWeaponDataAsset* NewWeapon);
+	void AddItem(UItemDataAsset* NewItem, int32 Quantity = 1);
 
-	// High-level equip logic
+	// Multi-Slot Equip logic
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void EquipWeaponAtIndex(int32 Index);
+	void EquipItemAtIndex(int32 Index, EEquipmentSlot TargetSlot);
 
-	// High-level draw/holster logic
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void UnequipItem(EEquipmentSlot Slot);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void UnequipItemToSlot(EEquipmentSlot Slot, int32 TargetIndex);
+
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ToggleDrawHolster();
 
-	// High-level unequip logic
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void UnequipCurrentWeapon();
-
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void UnequipCurrentWeaponToSlot(int32 TargetIndex);
-
-	/** --- QUERY API (SOLID: Predicates) --- */
-
+	/** --- QUERY API --- */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
 	[[nodiscard]] bool IsWeaponActionInProgress() const { return WeaponEquipState != EWeaponEquipState::Idle; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
-	[[nodiscard]] bool HasWeaponEquipped() const { return EquippedWeaponData != nullptr; }
+	[[nodiscard]] bool HasItemEquippedAtSlot(EEquipmentSlot Slot) const;
 
-	// AAA Utility: Returns the first empty index, or INDEX_NONE if full
 	[[nodiscard]] int32 FindEmptySlotIndex() const;
 
-	// Delegate to update UI
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnInventoryUpdated OnInventoryUpdated;
 
 protected:
-	/** --- ASYNC LOADING HANDLERS --- */
 	virtual void OnEquipMontageLoaded(class UWeaponDataAsset* WeaponToEquip);
 	virtual void OnUnequipMontageLoaded(class UWeaponDataAsset* WeaponToUnequip);
 
-	/** --- STATE MACHINE HELPERS --- */
 	void OnWeaponActionCompleted();
 	void SetEquipState(EWeaponEquipState NewState);
-
-	/** --- ORCHESTRATION HELPERS (AAA Pattern) --- */
 	
-	// Validation
-	[[nodiscard]] bool CanEquipWeapon(int32 Index) const;
-	[[nodiscard]] bool CanUnequipWeapon() const;
-	[[nodiscard]] bool CanToggleDrawHolster() const;
+	[[nodiscard]] bool CanEquipItem(int32 Index, EEquipmentSlot TargetSlot) const;
+	[[nodiscard]] bool CanPerformWeaponAction() const;
 
-	// Processing
-	void Internal_ProcessEquipFlow(int32 Index);
-	void Internal_ProcessUnequipFlow(int32 TargetIndex);
-	void Internal_SwapEquippedWithInventory(int32 Index);
+	void Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot);
+	void Internal_ProcessUnequipFlow(EEquipmentSlot Slot, int32 TargetIndex);
+	void Internal_SwapEquippedWithInventory(int32 Index, EEquipmentSlot TargetSlot);
 	void Internal_HandleWeaponTransition(UWeaponDataAsset* WeaponToTransition, bool bIsEquipping);
 	
-	// Mounting/Dismounting Logic (Centralized Stat Management)
-	void MountWeaponStats(UWeaponDataAsset* Weapon);
-	void DismountWeaponStats(UWeaponDataAsset* Weapon);
+	void MountItemStats(UItemDataAsset* Item);
+	void DismountItemStats(UItemDataAsset* Item);
 
-	// Execution
 	void ExecuteVisualTransition(UWeaponDataAsset* WeaponData, bool bIsEquipping);
 	void ExecuteInstantClear();
 	void PlayWeaponMontage(UWeaponDataAsset* LoadedData, UWeaponDataAsset* TargetData);
 
-	/** --- AAA UTILITIES (DRY) --- */
 	void ProcessMontageLoad(UWeaponDataAsset* WeaponData, const TSoftObjectPtr<UAnimMontage>& MontageToLoad, bool bIsEquipping);
 	void HandlePendingMontage(UWeaponDataAsset* WeaponData, const TSoftObjectPtr<UAnimMontage>& MontageToLoad, bool bIsEquipping);
 	void HandleValidMontage(UWeaponDataAsset* WeaponData, bool bIsEquipping);
 	void HandleMissingMontage(bool bIsEquipping);
 	void SnapWeaponWithoutAnimation(bool bIsEquip);
 
-	/** --- FINALIZATION --- */
 	void FinalizeEquipAction();
 	void FinalizeUnequipAction();
 

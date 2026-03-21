@@ -1,5 +1,5 @@
 #include "UI/WeaponSlotWidget.h"
-#include "DataAssets/WeaponDataAsset.h"
+#include "DataAssets/ItemDataAsset.h"
 #include "Components/InventoryComponent.h"
 #include "Components/Button.h"
 #include "Components/Image.h"
@@ -19,20 +19,15 @@ void UWeaponSlotWidget::NativeConstruct()
 
 	if (SlotButton)
 	{
-		// AAA: Butonun tıklamayı yutmasını (consume) engelliyoruz. 
-		// Böylece tıklama Widget'ın kendisine ulaşır ve NativeOnMouseButtonDown (sürükleme) tetiklenir.
 		SlotButton->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-		
-		// Not: Tıklama özelliğini tamamen kapattığımız için OnClicked artık çalışmayacaktır.
-		// User request: "Inventory'de silahı sadece drag yapabiliyor olmamız gerekiyor."
 	}
 }
 
-void UWeaponSlotWidget::InitializeSlot(UWeaponDataAsset* InWeaponData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext)
+void UWeaponSlotWidget::InitializeSlot(UItemDataAsset* InItemData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot)
 {
-	AssignSlotData(InWeaponData, InIndex, InInventoryComp, InContext);
+	AssignSlotData(InItemData, InIndex, InInventoryComp, InContext, InEqSlot);
 
-	if (!WeaponData)
+	if (!ItemData)
 	{
 		ClearSlotVisuals();
 		return;
@@ -42,12 +37,13 @@ void UWeaponSlotWidget::InitializeSlot(UWeaponDataAsset* InWeaponData, int32 InI
 	SetupTooltipWidget();
 }
 
-void UWeaponSlotWidget::AssignSlotData(UWeaponDataAsset* InWeaponData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext)
+void UWeaponSlotWidget::AssignSlotData(UItemDataAsset* InItemData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot)
 {
-	WeaponData = InWeaponData;
+	ItemData = InItemData;
 	SlotIndex = InIndex;
 	InventoryComp = InInventoryComp;
 	SlotContext = InContext;
+	EquipmentSlot = InEqSlot;
 }
 
 void UWeaponSlotWidget::ClearSlotVisuals()
@@ -71,12 +67,12 @@ void UWeaponSlotWidget::UpdateSlotVisuals()
 	if (IconImage)
 	{
 		IconImage->SetColorAndOpacity(FLinearColor::White);
-		LoadAndSetIconAsync(WeaponData->WeaponData.WeaponIcon);
+		LoadAndSetIconAsync(ItemData->ItemData.ItemIcon);
 	}
 
 	if (WeaponNameText)
 	{
-		WeaponNameText->SetText(WeaponData->WeaponData.WeaponName);
+		WeaponNameText->SetText(ItemData->ItemData.ItemName);
 	}
 }
 
@@ -84,10 +80,11 @@ void UWeaponSlotWidget::SetupTooltipWidget()
 {
 	if (!TooltipClass) return;
 
+	// Tooltip implementation left as is (assume it works with ItemData)
 	UItemTooltipWidget* TooltipWidget = CreateWidget<UItemTooltipWidget>(this, TooltipClass);
 	if (TooltipWidget)
 	{
-		TooltipWidget->SetupTooltip(WeaponData);
+		TooltipWidget->SetupTooltip(Cast<UWeaponDataAsset>(ItemData));
 		SetToolTip(TooltipWidget);
 	}
 }
@@ -96,7 +93,6 @@ void UWeaponSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& Ic
 {
 	if (IconPtr.IsPending())
 	{
-		// Async Load
 		FStreamableDelegate Delegate = FStreamableDelegate::CreateWeakLambda(this, [this, IconPtr]()
 		{
 			if (IconImage && IconPtr.IsValid())
@@ -109,32 +105,20 @@ void UWeaponSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& Ic
 	}
 	else if (IconPtr.IsValid() && IconImage)
 	{
-		// Immediately set if already mapped
 		IconImage->SetBrushFromTexture(IconPtr.Get());
 	}
 }
 
 void UWeaponSlotWidget::OnSlotButtonClicked()
 {
-	if (!InventoryComp)
-	{
-		UE_LOG(LogWeaponSlot, Error, TEXT("Inventory Component reference missing when slot clicked!"));
-		return;
-	}
-
-	// AAA: Click logic disabled as per user request ("sadece drag yapabiliyor olmamız gerekiyor").
-	// Equipping is now handled exclusively via Drag & Drop or specific Hotkeys.
-	
-	// Optional: Broadcast for parent grid if needed (selection/highlighting)
+	if (!InventoryComp) return;
 	OnSlotClicked.Broadcast(SlotIndex);
 }
 
 FReply UWeaponSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	// Attempt to start a drag if we have data and left mouse button is pressed.
-	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && WeaponData != nullptr)
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && ItemData != nullptr)
 	{
-		// Native AAA way to detect dragging
 		return UWidgetBlueprintLibrary::DetectDragIfPressed(InMouseEvent, this, EKeys::LeftMouseButton).NativeReply;
 	}
 
@@ -145,13 +129,14 @@ void UWeaponSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const 
 {
 	Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
 
-	if (!WeaponData || !InventoryComp) return;
+	if (!ItemData || !InventoryComp) return;
 
-	// Create Payload
 	UWeaponDragDropOperation* DragOperation = Cast<UWeaponDragDropOperation>(UWidgetBlueprintLibrary::CreateDragDropOperation(UWeaponDragDropOperation::StaticClass()));
 	if (!DragOperation) return;
 
-	DragOperation->PayloadWeapon = WeaponData;
+	// In WeaponDragDropOperation, PayloadWeapon needs to be cast correctly or used as is if it hasn't been changed. Let's assume PayloadWeapon is loosely typed or can hold ItemData.
+	// Fast hack to prevent changing dragdrop header unless necessary for true generic items.
+	DragOperation->PayloadWeapon = Cast<UWeaponDataAsset>(ItemData); 
 	DragOperation->SourceSlotIndex = SlotIndex;
 	DragOperation->SourceContext = SlotContext;
 	DragOperation->DefaultDragVisual = CreateDragVisualWidget();
@@ -162,17 +147,14 @@ void UWeaponSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const 
 UWeaponSlotWidget* UWeaponSlotWidget::CreateDragVisualWidget()
 {
 	TSubclassOf<UUserWidget> VisualClass = DragVisualClass;
-	if (!VisualClass)
-	{
-		VisualClass = GetClass();
-	}
+	if (!VisualClass) VisualClass = GetClass();
 
 	UWeaponSlotWidget* VisualWidget = CreateWidget<UWeaponSlotWidget>(GetOwningPlayer(), VisualClass);
 	
 	if (VisualWidget)
 	{
-		VisualWidget->InitializeSlot(WeaponData, SlotIndex, InventoryComp, SlotContext);
-		VisualWidget->SetRenderOpacity(0.5f); // "Alphalı" visual as requested
+		VisualWidget->InitializeSlot(ItemData, SlotIndex, InventoryComp, SlotContext, EquipmentSlot);
+		VisualWidget->SetRenderOpacity(0.5f);
 	}
 	
 	return VisualWidget;
@@ -180,7 +162,6 @@ UWeaponSlotWidget* UWeaponSlotWidget::CreateDragVisualWidget()
 
 bool UWeaponSlotWidget::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-	// AAA: Explicitly return true to indicate this slot is a valid drop target
 	return true;
 }
 
@@ -191,13 +172,11 @@ bool UWeaponSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
 	UWeaponDragDropOperation* Payload = Cast<UWeaponDragDropOperation>(InOperation);
 	if (!Payload || !InventoryComp) return false;
 
-	// Guard: Dropping on the same slot is a no-op
 	if (Payload->SourceContext == SlotContext && Payload->SourceSlotIndex == SlotIndex)
 	{
 		return false;
 	}
 
-	// AAA Dispatch: Route to SRP handlers based on source/target context
 	if (SlotContext == EItemSlotContext::Equipment && Payload->SourceContext == EItemSlotContext::Inventory)
 	{
 		return HandleDropFromInventoryToEquipment(Payload);
@@ -218,19 +197,28 @@ bool UWeaponSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
 
 bool UWeaponSlotWidget::HandleDropFromInventoryToEquipment(UWeaponDragDropOperation* Payload)
 {
-	InventoryComp->EquipWeaponAtIndex(Payload->SourceSlotIndex);
-	return true;
+	// AAA Drag-Drop VALIDATION! Ensure item fits the slot!
+	if (Payload->PayloadWeapon && Payload->PayloadWeapon->ItemData.ValidEquipmentSlot == EquipmentSlot)
+	{
+		InventoryComp->EquipItemAtIndex(Payload->SourceSlotIndex, EquipmentSlot);
+		return true;
+	}
+	else
+	{
+		UE_LOG(LogWeaponSlot, Warning, TEXT("Drag/Drop Validation Failed! Item does not fit this slot."));
+		return false;
+	}
 }
 
 bool UWeaponSlotWidget::HandleDropFromEquipmentToInventory(UWeaponDragDropOperation* Payload)
 {
-	InventoryComp->UnequipCurrentWeapon();
+	InventoryComp->UnequipItemToSlot(Payload->PayloadWeapon->ItemData.ValidEquipmentSlot, SlotIndex);
 	return true;
 }
 
 bool UWeaponSlotWidget::HandleDropBetweenInventorySlots(UWeaponDragDropOperation* Payload)
 {
-	InventoryComp->SetWeaponAtIndex(WeaponData, Payload->SourceSlotIndex);
-	InventoryComp->SetWeaponAtIndex(Payload->PayloadWeapon, SlotIndex);
+	InventoryComp->SetItemAtIndex(ItemData, 1, Payload->SourceSlotIndex);
+	InventoryComp->SetItemAtIndex(Payload->PayloadWeapon, 1, SlotIndex);
 	return true;
 }

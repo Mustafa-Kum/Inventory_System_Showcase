@@ -38,8 +38,8 @@ void UItemTooltipWidget::UpdateItemName(UWeaponDataAsset* ItemData)
 {
 	if (!ItemNameText) return;
 
-	ItemNameText->SetText(ItemData->WeaponData.WeaponName);
-	ItemNameText->SetColorAndOpacity(GetColorForRarity(ItemData->WeaponData.Rarity));
+	ItemNameText->SetText(ItemData->ItemData.ItemName);
+	ItemNameText->SetColorAndOpacity(GetColorForRarity(ItemData->ItemData.Rarity));
 }
 
 void UItemTooltipWidget::UpdateItemType(UWeaponDataAsset* ItemData)
@@ -69,7 +69,7 @@ void UItemTooltipWidget::UpdateBonusStats(UWeaponDataAsset* ItemData)
 
 	BonusStatsBox->ClearChildren();
 	const FSlateColor GreenColor = FSlateColor(FLinearColor(0.0f, 1.0f, 0.0f));
-	const FItemBonusStats& Stats = ItemData->WeaponData.BonusStats;
+	const FItemBonusStats& Stats = ItemData->ItemData.BonusStats;
 	
 	if (Stats.BonusStamina > 0) AddStatRow(TEXT("+"), Stats.BonusStamina, GreenColor, TEXT(" Stamina"));
 	if (Stats.BonusStrength > 0) AddStatRow(TEXT("+"), Stats.BonusStrength, GreenColor, TEXT(" Strength")); 
@@ -86,9 +86,9 @@ void UItemTooltipWidget::UpdateEconomy(UWeaponDataAsset* ItemData)
 {
 	if (!SellPriceText) return;
 
-	if (ItemData->WeaponData.SellPriceGold > 0)
+	if (ItemData->ItemData.SellPriceGold > 0)
 	{
-		SellPriceText->SetText(FText::Format(NSLOCTEXT("Tooltip", "PriceFmt", "Sell Price: {0} Gold"), FText::AsNumber(ItemData->WeaponData.SellPriceGold)));
+		SellPriceText->SetText(FText::Format(NSLOCTEXT("Tooltip", "PriceFmt", "Sell Price: {0} Gold"), FText::AsNumber(ItemData->ItemData.SellPriceGold)));
 		SellPriceText->SetVisibility(ESlateVisibility::Visible);
 	}
 	else
@@ -97,15 +97,15 @@ void UItemTooltipWidget::UpdateEconomy(UWeaponDataAsset* ItemData)
 	}
 }
 
-FSlateColor UItemTooltipWidget::GetColorForRarity(EWeaponRarity Rarity) const
+FSlateColor UItemTooltipWidget::GetColorForRarity(EItemRarity Rarity) const
 {
 	switch (Rarity)
 	{
-		case EWeaponRarity::Uncommon:	return FSlateColor(FLinearColor(0.0f, 1.0f, 0.0f)); // Green
-		case EWeaponRarity::Rare:		return FSlateColor(FLinearColor(0.0f, 0.4f, 1.0f)); // Blue
-		case EWeaponRarity::Epic:		return FSlateColor(FLinearColor(0.6f, 0.2f, 0.8f)); // Purple
-		case EWeaponRarity::Legendary:	return FSlateColor(FLinearColor(1.0f, 0.5f, 0.0f)); // Orange
-		case EWeaponRarity::Common:
+		case EItemRarity::Uncommon:	return FSlateColor(FLinearColor(0.0f, 1.0f, 0.0f)); // Green
+		case EItemRarity::Rare:		return FSlateColor(FLinearColor(0.0f, 0.4f, 1.0f)); // Blue
+		case EItemRarity::Epic:		return FSlateColor(FLinearColor(0.6f, 0.2f, 0.8f)); // Purple
+		case EItemRarity::Legendary:	return FSlateColor(FLinearColor(1.0f, 0.5f, 0.0f)); // Orange
+		case EItemRarity::Common:
 		default:						return FSlateColor(FLinearColor::White); 
 	}
 }

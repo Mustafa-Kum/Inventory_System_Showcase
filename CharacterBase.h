@@ -57,9 +57,9 @@ public:
 	void ClearWeaponMesh();
 
 	// --- ITEM STAT MODIFIERS ---
-	// Silah takıldığında veya çıkarıldığında statları güncellemek için (AAA Standard)
-	virtual void ApplyWeaponStats(class UWeaponDataAsset* WeaponData);
-	virtual void RemoveWeaponStats(class UWeaponDataAsset* WeaponData);
+	// Eşya takıldığında veya çıkarıldığında statları güncellemek için (AAA Standard)
+	virtual void ApplyItemStats(class UItemDataAsset* ItemData);
+	virtual void RemoveItemStats(class UItemDataAsset* ItemData);
 
 	// --- VIRTUAL INPUT HOOKS (AAA: DIP - Decoupling Components from Hero class) ---
 	virtual void Move(const FInputActionValue& Value) {}
@@ -94,10 +94,13 @@ private:
 	void AttachWeaponToSocket(FName SocketName);
 	void SetArmedState(bool bIsArmed);
 
-	// DRY: Shared stat modification — ApplyWeaponStats(+1) / RemoveWeaponStats(-1)
-	void ModifyWeaponStats(class UWeaponDataAsset* WeaponData, float Sign);
+	// DRY: Shared stat modification — ApplyItemStats(+1) / RemoveItemStats(-1)
+	void ModifyItemStats(class UItemDataAsset* ItemData, float Sign);
 
-	// Applies base stats from the assigned CharacterDataAsset
+	// DRY: Unified stat initialization from a stats struct
+	void ApplyStartingStats(const struct FCharacterStartingStats& Stats);
+
+	// Applies base stats from the assigned CharacterDataAsset (called from BeginPlay)
 	void InitializeCharacterStats();
 
 	// Ability System Component (GAS)

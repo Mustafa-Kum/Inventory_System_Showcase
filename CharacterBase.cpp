@@ -58,36 +58,22 @@ void ACharacterBase::InitializeCharacterStats()
 
 	if (CharacterClassData)
 	{
-		// AAA Direct Initialization Pattern for Stats Base Values (Fastest & Safest)
-		AttributeSet->InitStrength(CharacterClassData->StartingStats.InitialStrength);
-		AttributeSet->InitAgility(CharacterClassData->StartingStats.InitialAgility);
-		AttributeSet->InitIntellect(CharacterClassData->StartingStats.InitialIntellect);
-		AttributeSet->InitStamina(CharacterClassData->StartingStats.InitialStamina);
-		
-		AttributeSet->InitCriticalStrikeChance(CharacterClassData->StartingStats.BaseCriticalStrikeChance);
-		AttributeSet->InitMovementSpeed(CharacterClassData->StartingStats.BaseMovementSpeed);
-
-		AttributeSet->InitHealth(100.0f);
-		AttributeSet->InitMaxHealth(100.0f);
-		AttributeSet->InitAttackDamage(CharacterClassData->StartingStats.BasePhysicalDamage);
-		AttributeSet->InitSpellDamage(CharacterClassData->StartingStats.BaseMagicDamage);
-		AttributeSet->InitArmor(CharacterClassData->StartingStats.BaseArmor);
+		ApplyStartingStats(CharacterClassData->StartingStats);
 	}
 	else
 	{
-		// AAA: Safe Fallback to User Requested Values if Data Asset is missing
-		AttributeSet->InitStrength(2.0f);
-		AttributeSet->InitAgility(1.0f);
-		AttributeSet->InitIntellect(3.0f);
-		AttributeSet->InitStamina(5.0f);
-		AttributeSet->InitArmor(10.0f);
-		AttributeSet->InitCriticalStrikeChance(0.0f);
-		AttributeSet->InitMovementSpeed(350.0f);
-		
-		AttributeSet->InitHealth(100.0f);
-		AttributeSet->InitMaxHealth(100.0f);
-		AttributeSet->InitAttackDamage(10.0f); // Default unarmed damage
-		AttributeSet->InitSpellDamage(10.0f);
+		// AAA: Safe Fallback — construct default stats if Data Asset is missing
+		FCharacterStartingStats FallbackStats;
+		FallbackStats.InitialStrength = 2.0f;
+		FallbackStats.InitialAgility = 1.0f;
+		FallbackStats.InitialIntellect = 3.0f;
+		FallbackStats.InitialStamina = 5.0f;
+		FallbackStats.BaseArmor = 10.0f;
+		FallbackStats.BaseCriticalStrikeChance = 0.0f;
+		FallbackStats.BaseMovementSpeed = 350.0f;
+		FallbackStats.BasePhysicalDamage = 10.0f;
+		FallbackStats.BaseMagicDamage = 10.0f;
+		ApplyStartingStats(FallbackStats);
 	}
 	
 	// Force an update to allow PreAttributeChange scaling to calculate derived base values
@@ -98,34 +84,55 @@ void ACharacterBase::InitializeCharacterStats()
 	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetStaminaAttribute(), EGameplayModOp::Additive, 0.0f);
 }
 
-void ACharacterBase::ApplyWeaponStats(UWeaponDataAsset* WeaponData)
+void ACharacterBase::ApplyStartingStats(const FCharacterStartingStats& Stats)
 {
-	if (!AbilitySystemComponent || !WeaponData) return;
-
-	// Set weapon interval as base for haste math (Override — weapon defines the base)
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, WeaponData->WeaponData.WeaponCastSpeed);
-
-	ModifyWeaponStats(WeaponData, +1.0f);
+	AttributeSet->InitStrength(Stats.InitialStrength);
+	AttributeSet->InitAgility(Stats.InitialAgility);
+	AttributeSet->InitIntellect(Stats.InitialIntellect);
+	AttributeSet->InitStamina(Stats.InitialStamina);
+	AttributeSet->InitCriticalStrikeChance(Stats.BaseCriticalStrikeChance);
+	AttributeSet->InitMovementSpeed(Stats.BaseMovementSpeed);
+	AttributeSet->InitHealth(100.0f);
+	AttributeSet->InitMaxHealth(100.0f);
+	AttributeSet->InitAttackDamage(Stats.BasePhysicalDamage);
+	AttributeSet->InitSpellDamage(Stats.BaseMagicDamage);
+	AttributeSet->InitArmor(Stats.BaseArmor);
 }
 
-void ACharacterBase::RemoveWeaponStats(UWeaponDataAsset* WeaponData)
+void ACharacterBase::ApplyItemStats(UItemDataAsset* ItemData)
 {
-	if (!AbilitySystemComponent || !WeaponData) return;
+	if (!AbilitySystemComponent || !ItemData) return;
 
-	// Reset weapon interval to 0 (Unarmed — no attack interval in UI/Logic)
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, 0.0f);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetCastSpeedAttribute(), EGameplayModOp::Override, 0.0f);
+	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
+	{
+		// Set weapon interval as base for haste math (Override — weapon defines the base)
+		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, WeaponData->WeaponData.WeaponCastSpeed);
+		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, WeaponData->WeaponData.BaseDamage);
+	}
 
-	ModifyWeaponStats(WeaponData, -1.0f);
+	ModifyItemStats(ItemData, +1.0f);
 }
 
-void ACharacterBase::ModifyWeaponStats(UWeaponDataAsset* WeaponData, float Sign)
+void ACharacterBase::RemoveItemStats(UItemDataAsset* ItemData)
+{
+	if (!AbilitySystemComponent || !ItemData) return;
+
+	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
+	{
+		// Reset weapon interval to 0 (Unarmed — no attack interval in UI/Logic)
+		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, 0.0f);
+		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetCastSpeedAttribute(), EGameplayModOp::Override, 0.0f);
+		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, -WeaponData->WeaponData.BaseDamage);
+	}
+
+	ModifyItemStats(ItemData, -1.0f);
+}
+
+void ACharacterBase::ModifyItemStats(UItemDataAsset* ItemData, float Sign)
 {
 	// DRY: Single Source of Truth — adding a new bonus stat requires editing only this method
-	const FWeaponData& Data = WeaponData->WeaponData;
-	const FItemBonusStats& Bonus = Data.BonusStats;
+	const FItemBonusStats& Bonus = ItemData->ItemData.BonusStats;
 
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(),         EGameplayModOp::Additive, Sign * Data.BaseDamage);
 	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetStrengthAttribute(),              EGameplayModOp::Additive, Sign * Bonus.BonusStrength);
 	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAgilityAttribute(),               EGameplayModOp::Additive, Sign * Bonus.BonusAgility);
 	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetIntellectAttribute(),             EGameplayModOp::Additive, Sign * Bonus.BonusIntellect);

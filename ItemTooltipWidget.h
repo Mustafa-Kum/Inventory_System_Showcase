@@ -4,9 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "DataAssets/WeaponDataAsset.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Layout/Margin.h"
+
+// AAA: Forward-declare enums to reduce header coupling (full include in .cpp)
+enum class EItemRarity : uint8;
+enum class EWeaponType : uint8;
+
 #include "ItemTooltipWidget.generated.h"
 
 class UWeaponDataAsset;
@@ -70,6 +74,6 @@ private:
 	void AddStatRow(const FString& Prefix, float Value, const FSlateColor& Color, const FString& Suffix);
 	
 	// --- AAA Pure Formatters (SOLID/DRY) ---
-	[[nodiscard]] FSlateColor GetColorForRarity(EWeaponRarity Rarity) const;
+	[[nodiscard]] FSlateColor GetColorForRarity(EItemRarity Rarity) const;
 	[[nodiscard]] FString GetStringForWeaponType(EWeaponType Type) const;
 };

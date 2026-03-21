@@ -1,10 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "DataAssets/WeaponDataAsset.h"
 
-FPrimaryAssetId UWeaponDataAsset::GetPrimaryAssetId() const
+UWeaponDataAsset::UWeaponDataAsset()
 {
-	// This tells the Unreal Asset Manager how to categorize and find this asset. "Weapon" is the category type.
-	return FPrimaryAssetId(FName("Weapon"), GetFName());
+	// AAA Defaults: Setup base item properties specifically for weapons
+	ItemData.ItemType = EItemType::Weapon;
+	ItemData.ValidEquipmentSlot = EEquipmentSlot::MainHand;
+	ItemData.MaxStackSize = 1; // Weapons generally don't stack
 }

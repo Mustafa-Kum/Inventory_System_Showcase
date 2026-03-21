@@ -1,5 +1,6 @@
 #include "Components/InventoryComponent.h"
 #include "Characters/CharacterBase.h"
+#include "DataAssets/ItemDataAsset.h"
 #include "DataAssets/WeaponDataAsset.h"
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
@@ -9,17 +10,16 @@ DEFINE_LOG_CATEGORY_STATIC(LogInventory, Log, All);
 
 UInventoryComponent::UInventoryComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false; // AAA standard: Turn off tick for inventory
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
 void UInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// AAA Initialization: Pre-allocate the required slots so array operations are safe O(1)
-	WeaponInventory.SetNum(MaxInventorySlots);
+	// Pre-allocate slots
+	InventorySlots.SetNum(MaxInventorySlots);
 
-	// Cache the owner
 	OwnerCharacter = Cast<ACharacterBase>(GetOwner());
 	if (!OwnerCharacter)
 	{
@@ -27,56 +27,49 @@ void UInventoryComponent::BeginPlay()
 		return;
 	}
 
-	// AAA State Machine: Bind to CharacterBase's weapon action finished delegate (DIP principle)
 	OwnerCharacter->OnWeaponActionFinished.AddUObject(this, &UInventoryComponent::OnWeaponActionCompleted);
 
-	// Eğer Blueprint üzerinden bir başlangıç silahı seçildiyse:
-	if (DefaultStartingWeapon)
+	if (DefaultStartingItem)
 	{
-		// Sadece çantaya (Inventory) ekle. Artık otomatik olarak sırta takılmıyor, 
-		// oyuncunun sürükleyip takması gerekiyor. (User request: "sürükleyip koyduğumuzda takmış olmamız gerekiyor")
-		AddWeapon(DefaultStartingWeapon);
-		
-		UE_LOG(LogInventory, Log, TEXT("Started with weapon in bag: %s"), *DefaultStartingWeapon->WeaponData.WeaponName.ToString());
+		AddItem(DefaultStartingItem, 1);
+		UE_LOG(LogInventory, Log, TEXT("Started with item in bag: %s"), *DefaultStartingItem->ItemData.ItemName.ToString());
 	}
 }
 
-void UInventoryComponent::SetWeaponAtIndex(UWeaponDataAsset* Weapon, int32 Index)
+void UInventoryComponent::SetItemAtIndex(UItemDataAsset* Item, int32 Quantity, int32 Index)
 {
-	if (WeaponInventory.IsValidIndex(Index))
+	if (InventorySlots.IsValidIndex(Index))
 	{
-		WeaponInventory[Index] = Weapon;
+		InventorySlots[Index] = FInventoryItem(Item, Quantity);
 		OnInventoryUpdated.Broadcast();
 		
-		if (Weapon)
+		if (Item)
 		{
-			UE_LOG(LogInventory, Log, TEXT("Moved Weapon: %s to Slot: %d"), *Weapon->WeaponData.WeaponName.ToString(), Index);
+			UE_LOG(LogInventory, Log, TEXT("Moved Item: %s to Slot: %d"), *Item->ItemData.ItemName.ToString(), Index);
 		}
 	}
 }
 
-void UInventoryComponent::AddWeapon(UWeaponDataAsset* NewWeapon)
+void UInventoryComponent::AddItem(UItemDataAsset* NewItem, int32 Quantity)
 {
-	if (!NewWeapon) return;
+	if (!NewItem) return;
 
 	const int32 EmptyIndex = FindEmptySlotIndex();
 	
-	// AAA: Fail-fast orchestrator
 	if (EmptyIndex == INDEX_NONE)
 	{
-		UE_LOG(LogInventory, Warning, TEXT("Inventory Full! Could not add weapon: %s"), *NewWeapon->WeaponData.WeaponName.ToString());
+		UE_LOG(LogInventory, Warning, TEXT("Inventory Full! Could not add item: %s"), *NewItem->ItemData.ItemName.ToString());
 		return;
 	}
 
-	SetWeaponAtIndex(NewWeapon, EmptyIndex);
+	SetItemAtIndex(NewItem, Quantity, EmptyIndex);
 }
 
 int32 UInventoryComponent::FindEmptySlotIndex() const
 {
-	// AAA logic: Find first empty slot (abstracted loop logic)
 	for (int32 i = 0; i < MaxInventorySlots; ++i)
 	{
-		if (WeaponInventory[i] == nullptr)
+		if (!InventorySlots[i].IsValid())
 		{
 			return i;
 		}
@@ -84,54 +77,69 @@ int32 UInventoryComponent::FindEmptySlotIndex() const
 	return INDEX_NONE;
 }
 
-void UInventoryComponent::EquipWeaponAtIndex(int32 Index)
+void UInventoryComponent::EquipItemAtIndex(int32 Index, EEquipmentSlot TargetSlot)
 {
-	if (!CanEquipWeapon(Index)) return;
+	if (!CanEquipItem(Index, TargetSlot)) return;
 
-	Internal_ProcessEquipFlow(Index);
+	Internal_ProcessEquipFlow(Index, TargetSlot);
 }
 
-void UInventoryComponent::Internal_ProcessEquipFlow(int32 Index)
+void UInventoryComponent::Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot)
 {
-	// 1. Swap existing weapon if necessary
-	if (HasWeaponEquipped())
+	if (HasItemEquippedAtSlot(TargetSlot))
 	{
-		Internal_SwapEquippedWithInventory(Index);
+		Internal_SwapEquippedWithInventory(Index, TargetSlot);
 	}
 	else
 	{
-		// 2. Just move into slot
-		EquippedWeaponData = WeaponInventory[Index];
-		WeaponInventory[Index] = nullptr;
-		MountWeaponStats(EquippedWeaponData);
+		UItemDataAsset* ItemToEquip = InventorySlots[Index].ItemData;
+		EquippedItems.Add(TargetSlot, ItemToEquip);
+		SetItemAtIndex(nullptr, 0, Index);
+		MountItemStats(ItemToEquip);
 	}
 
-	// 3. Trigger Visuals (Snapping to back)
-	OwnerCharacter->SetPendingWeapon(EquippedWeaponData);
+	// Visuals (Only if weapon)
+	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(EquippedItems[TargetSlot]))
+	{
+		OwnerCharacter->SetPendingWeapon(WeaponData);
+	}
 	
 	OnInventoryUpdated.Broadcast();
-	UE_LOG(LogInventory, Log, TEXT("Equipped weapon: %s"), *EquippedWeaponData->WeaponData.WeaponName.ToString());
+	
+	if (EquippedItems[TargetSlot])
+	{
+		UE_LOG(LogInventory, Log, TEXT("Equipped item: %s to slot %d"), *EquippedItems[TargetSlot]->ItemData.ItemName.ToString(), (int32)TargetSlot);
+	}
 }
 
-void UInventoryComponent::Internal_SwapEquippedWithInventory(int32 Index)
+void UInventoryComponent::Internal_SwapEquippedWithInventory(int32 Index, EEquipmentSlot TargetSlot)
 {
-	UWeaponDataAsset* WeaponToBag = EquippedWeaponData;
-	UWeaponDataAsset* WeaponToHand = WeaponInventory[Index];
+	UItemDataAsset* ItemToBag = EquippedItems[TargetSlot];
+	UItemDataAsset* ItemToHand = InventorySlots[Index].ItemData;
+	int32 QtyToHand = InventorySlots[Index].Quantity;
 
-	DismountWeaponStats(WeaponToBag);
+	DismountItemStats(ItemToBag);
 	
-	WeaponInventory[Index] = WeaponToBag;
-	EquippedWeaponData = WeaponToHand;
+	SetItemAtIndex(ItemToBag, 1, Index); // Unstacking to bag
+	EquippedItems.Add(TargetSlot, ItemToHand);
 
-	MountWeaponStats(EquippedWeaponData);
+	MountItemStats(ItemToHand);
+}
+
+bool UInventoryComponent::HasItemEquippedAtSlot(EEquipmentSlot Slot) const
+{
+	return EquippedItems.Contains(Slot) && EquippedItems[Slot] != nullptr;
 }
 
 void UInventoryComponent::ToggleDrawHolster()
 {
-	if (!CanToggleDrawHolster()) return;
+	if (!CanPerformWeaponAction()) return;
+
+	UWeaponDataAsset* MainHandWeapon = Cast<UWeaponDataAsset>(EquippedItems.FindRef(EEquipmentSlot::MainHand));
+	if (!MainHandWeapon) return;
 
 	const bool bIsDrawing = !OwnerCharacter->HasWeaponEquipped();
-	Internal_HandleWeaponTransition(EquippedWeaponData, bIsDrawing);
+	Internal_HandleWeaponTransition(MainHandWeapon, bIsDrawing);
 }
 
 void UInventoryComponent::Internal_HandleWeaponTransition(UWeaponDataAsset* WeaponToTransition, bool bIsEquipping)
@@ -147,61 +155,65 @@ void UInventoryComponent::Internal_HandleWeaponTransition(UWeaponDataAsset* Weap
 	ExecuteVisualTransition(WeaponToTransition, bIsEquipping);
 }
 
-void UInventoryComponent::UnequipCurrentWeapon()
+void UInventoryComponent::UnequipItem(EEquipmentSlot Slot)
 {
-	if (!CanUnequipWeapon()) return;
-
-	Internal_ProcessUnequipFlow(-1); // -1 means find first available
+	// -1 means find first available
+	Internal_ProcessUnequipFlow(Slot, -1);
 }
 
-void UInventoryComponent::UnequipCurrentWeaponToSlot(int32 TargetIndex)
+void UInventoryComponent::UnequipItemToSlot(EEquipmentSlot Slot, int32 TargetIndex)
 {
-	if (!CanUnequipWeapon()) return;
-
-	Internal_ProcessUnequipFlow(TargetIndex);
+	Internal_ProcessUnequipFlow(Slot, TargetIndex);
 }
 
-void UInventoryComponent::Internal_ProcessUnequipFlow(int32 TargetIndex)
+void UInventoryComponent::Internal_ProcessUnequipFlow(EEquipmentSlot Slot, int32 TargetIndex)
 {
-	UWeaponDataAsset* WeaponToUnequip = EquippedWeaponData;
-	DismountWeaponStats(WeaponToUnequip);
+	if (!HasItemEquippedAtSlot(Slot)) return;
+
+	UItemDataAsset* ItemToUnequip = EquippedItems[Slot];
+	DismountItemStats(ItemToUnequip);
 	
-	EquippedWeaponData = nullptr;
+	EquippedItems.Remove(Slot);
 
-	// Resolve storage
-	if (WeaponInventory.IsValidIndex(TargetIndex) && WeaponInventory[TargetIndex] == nullptr)
+	if (InventorySlots.IsValidIndex(TargetIndex) && !InventorySlots[TargetIndex].IsValid())
 	{
-		SetWeaponAtIndex(WeaponToUnequip, TargetIndex);
+		SetItemAtIndex(ItemToUnequip, 1, TargetIndex);
 	}
 	else
 	{
-		AddWeapon(WeaponToUnequip);
+		AddItem(ItemToUnequip, 1);
 	}
 
-	// Visuals
-	if (OwnerCharacter->HasWeaponEquipped())
+	if (UWeaponDataAsset* WeaponToUnequip = Cast<UWeaponDataAsset>(ItemToUnequip))
 	{
-		Internal_HandleWeaponTransition(WeaponToUnequip, false);
+		if (OwnerCharacter->HasWeaponEquipped())
+		{
+			Internal_HandleWeaponTransition(WeaponToUnequip, false);
+		}
+		else
+		{
+			ExecuteInstantClear();
+		}
 	}
 	else
 	{
-		ExecuteInstantClear();
+		OnInventoryUpdated.Broadcast();
 	}
 }
 
-void UInventoryComponent::MountWeaponStats(UWeaponDataAsset* Weapon)
+void UInventoryComponent::MountItemStats(UItemDataAsset* Item)
 {
-	if (OwnerCharacter && Weapon)
+	if (OwnerCharacter && Item)
 	{
-		OwnerCharacter->ApplyWeaponStats(Weapon);
+		OwnerCharacter->ApplyItemStats(Item);
 	}
 }
 
-void UInventoryComponent::DismountWeaponStats(UWeaponDataAsset* Weapon)
+void UInventoryComponent::DismountItemStats(UItemDataAsset* Item)
 {
-	if (OwnerCharacter && Weapon)
+	if (OwnerCharacter && Item)
 	{
-		OwnerCharacter->RemoveWeaponStats(Weapon);
+		OwnerCharacter->RemoveItemStats(Item);
 	}
 }
 
@@ -253,14 +265,14 @@ void UInventoryComponent::FinalizeEquipAction()
 {
 	if (PendingEquipWeaponData)
 	{
-		EquippedWeaponData = PendingEquipWeaponData;
 		PendingEquipWeaponData = nullptr;
 	}
 }
 
 void UInventoryComponent::FinalizeUnequipAction()
 {
-	if (!EquippedWeaponData && OwnerCharacter)
+	// Assuming the map still doesn't have it since we removed it in Internal_ProcessUnequipFlow
+	if (!HasItemEquippedAtSlot(EEquipmentSlot::MainHand) && OwnerCharacter)
 	{
 		OwnerCharacter->ClearWeaponMesh();
 	}
@@ -285,19 +297,14 @@ void UInventoryComponent::PlayWeaponMontage(UWeaponDataAsset* LoadedData, UWeapo
 	}
 }
 
-bool UInventoryComponent::CanEquipWeapon(int32 Index) const
+bool UInventoryComponent::CanEquipItem(int32 Index, EEquipmentSlot TargetSlot) const
 {
-	return OwnerCharacter && WeaponInventory.IsValidIndex(Index) && WeaponInventory[Index] && !IsWeaponActionInProgress() && !OwnerCharacter->IsInCombat();
+	return OwnerCharacter && InventorySlots.IsValidIndex(Index) && InventorySlots[Index].IsValid() && !IsWeaponActionInProgress() && !OwnerCharacter->IsInCombat();
 }
 
-bool UInventoryComponent::CanUnequipWeapon() const
+bool UInventoryComponent::CanPerformWeaponAction() const
 {
-	return OwnerCharacter && EquippedWeaponData && !IsWeaponActionInProgress() && !OwnerCharacter->IsInCombat();
-}
-
-bool UInventoryComponent::CanToggleDrawHolster() const
-{
-	return OwnerCharacter && EquippedWeaponData && !IsWeaponActionInProgress() && !OwnerCharacter->IsInCombat();
+	return OwnerCharacter && HasItemEquippedAtSlot(EEquipmentSlot::MainHand) && !IsWeaponActionInProgress() && !OwnerCharacter->IsInCombat();
 }
 
 void UInventoryComponent::ProcessMontageLoad(UWeaponDataAsset* WeaponData, const TSoftObjectPtr<UAnimMontage>& MontageToLoad, bool bIsEquipping)
@@ -328,15 +335,7 @@ void UInventoryComponent::HandleMissingMontage(bool bIsEquipping)
 
 void UInventoryComponent::SnapWeaponWithoutAnimation(bool bIsEquipping)
 {
-	if (OwnerCharacter)
-	{
-		if (bIsEquipping)
-		{
-			OwnerCharacter->OnWeaponEquipNotify();
-		}
-		else
-		{
-			OwnerCharacter->OnWeaponUnequipNotify();
-		}
-	}
+	if (!OwnerCharacter) return;
+
+	bIsEquipping ? OwnerCharacter->OnWeaponEquipNotify() : OwnerCharacter->OnWeaponUnequipNotify();
 }

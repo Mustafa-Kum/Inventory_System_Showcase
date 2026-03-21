@@ -185,7 +185,7 @@ private:
 	void PopulateBackpackGrid();
 	
 	// AAA: Loop Internal Extractor
-	void CreateAndAddBackpackSlot(UWeaponDataAsset* WeaponData, int32 SlotIndex);
+	void CreateAndAddBackpackSlot(class UItemDataAsset* ItemData, int32 SlotIndex);
 	
 	// Stats UI Helper
 	void UpdateStatsUI();
