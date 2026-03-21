@@ -23,6 +23,9 @@ struct FWeaponData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Info")
 	EWeaponType WeaponType = EWeaponType::Sword;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Info")
+	bool bIsTwoHanded = false;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
 	TSoftObjectPtr<class UAnimMontage> EquipMontage;
 	

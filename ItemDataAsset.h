@@ -49,38 +49,7 @@ enum class EEquipmentSlot : uint8
 	Boots		UMETA(DisplayName = "Boots")
 };
 
-USTRUCT(BlueprintType)
-struct FItemBonusStats
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusStrength = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusAgility = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusIntellect = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusStamina = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusArmor = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusCriticalStrikeChance = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusMovementSpeed = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusMagicDamage = 0.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Bonus Stats")
-	float BonusCastSpeed = 0.0f;
-};
+// Deleted FItemBonusStats
 
 USTRUCT(BlueprintType)
 struct FItemData
@@ -102,14 +71,24 @@ struct FItemData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item Info")
 	TSoftObjectPtr<class UTexture2D> ItemIcon;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TSoftObjectPtr<class USkeletalMesh> EquipmentMesh;
+
+	// AAA GAS Integration: This effect dynamically applies all complex percentages or stat modifications.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats (Server/Backend)")
+	TSubclassOf<class UGameplayEffect> EquippedStatEffect;
+
+	// AAA DRY Principle: Removed BonusStats here. Stats are exclusively fetched from the GE CDO.
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Economy", meta = (ClampMin = "0"))
 	int32 SellPriceGold = 0;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory", meta = (ClampMin = "1"))
 	int32 MaxStackSize = 1;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
-	FItemBonusStats BonusStats;
+	// Moved to UI-Only Display
+	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+	// FItemBonusStats BonusStats;
 };
 
 class UItemDataAsset;

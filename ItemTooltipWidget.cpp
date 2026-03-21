@@ -6,7 +6,8 @@
 #include "Components/VerticalBoxSlot.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/Font.h"
-
+#include "GameplayEffect.h"
+#include "AttributeSet.h"
 UItemTooltipWidget::UItemTooltipWidget(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	// AAA: Load default engine font so the Inspector doesn't show 'None'
@@ -68,18 +69,30 @@ void UItemTooltipWidget::UpdateBonusStats(UWeaponDataAsset* ItemData)
 	if (!BonusStatsBox || !StatRowClass) return;
 
 	BonusStatsBox->ClearChildren();
-	const FSlateColor GreenColor = FSlateColor(FLinearColor(0.0f, 1.0f, 0.0f));
-	const FItemBonusStats& Stats = ItemData->ItemData.BonusStats;
 	
-	if (Stats.BonusStamina > 0) AddStatRow(TEXT("+"), Stats.BonusStamina, GreenColor, TEXT(" Stamina"));
-	if (Stats.BonusStrength > 0) AddStatRow(TEXT("+"), Stats.BonusStrength, GreenColor, TEXT(" Strength")); 
-	if (Stats.BonusAgility > 0) AddStatRow(TEXT("+"), Stats.BonusAgility, GreenColor, TEXT(" Agility"));
-	if (Stats.BonusIntellect > 0) AddStatRow(TEXT("+"), Stats.BonusIntellect, GreenColor, TEXT(" Intellect"));
-	if (Stats.BonusArmor > 0) AddStatRow(TEXT("+"), Stats.BonusArmor, GreenColor, TEXT(" Armor"));
-	if (Stats.BonusCriticalStrikeChance > 0) AddStatRow(TEXT("+"), Stats.BonusCriticalStrikeChance, GreenColor, TEXT("% Critical Strike"));
-	if (Stats.BonusMovementSpeed > 0) AddStatRow(TEXT("+"), Stats.BonusMovementSpeed, GreenColor, TEXT(" Movement Speed"));
-	if (Stats.BonusMagicDamage > 0) AddStatRow(TEXT("+"), Stats.BonusMagicDamage, GreenColor, TEXT(" Magic Damage"));
-	if (Stats.BonusCastSpeed > 0) AddStatRow(TEXT("+"), Stats.BonusCastSpeed, GreenColor, TEXT(" Cast Speed"));
+	if (!ItemData->ItemData.EquippedStatEffect) return;
+
+	// AAA CDO Parsing: Automatically generate tooltip from the Gameplay Effect's modifiers
+	if (UGameplayEffect* GE = ItemData->ItemData.EquippedStatEffect.GetDefaultObject())
+	{
+		const FSlateColor GreenColor = FSlateColor(FLinearColor(0.0f, 1.0f, 0.0f));
+		const FSlateColor RedColor = FSlateColor(FLinearColor(1.0f, 0.0f, 0.0f));
+
+		for (const auto& ModInfo : GE->Modifiers)
+		{
+			float Magnitude = 0.0f;
+			if (ModInfo.ModifierMagnitude.GetStaticMagnitudeIfPossible(1.0f, Magnitude))
+			{
+				if (Magnitude == 0.0f) continue;
+				
+				FString AttributeName = ModInfo.Attribute.GetName();
+				FString Prefix = Magnitude > 0.0f ? TEXT("+") : TEXT("");
+				FSlateColor Color = Magnitude > 0.0f ? GreenColor : RedColor;
+				
+				AddStatRow(Prefix, Magnitude, Color, FString::Printf(TEXT(" %s"), *AttributeName));
+			}
+		}
+	}
 }
 
 void UItemTooltipWidget::UpdateEconomy(UWeaponDataAsset* ItemData)

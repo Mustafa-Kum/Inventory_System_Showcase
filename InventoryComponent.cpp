@@ -86,13 +86,36 @@ void UInventoryComponent::EquipItemAtIndex(int32 Index, EEquipmentSlot TargetSlo
 
 void UInventoryComponent::Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot)
 {
+	UItemDataAsset* ItemToEquip = InventorySlots[Index].ItemData;
+
+	// AAA Two-Handed Block Logic
+	if (TargetSlot == EEquipmentSlot::MainHand)
+	{
+		if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemToEquip))
+		{
+			if (WeaponData->WeaponData.bIsTwoHanded && HasItemEquippedAtSlot(EEquipmentSlot::OffHand))
+			{
+				UnequipItem(EEquipmentSlot::OffHand);
+			}
+		}
+	}
+	else if (TargetSlot == EEquipmentSlot::OffHand)
+	{
+		if (UWeaponDataAsset* MainHandWeapon = Cast<UWeaponDataAsset>(EquippedItems.FindRef(EEquipmentSlot::MainHand)))
+		{
+			if (MainHandWeapon->WeaponData.bIsTwoHanded)
+			{
+				UnequipItem(EEquipmentSlot::MainHand);
+			}
+		}
+	}
+
 	if (HasItemEquippedAtSlot(TargetSlot))
 	{
 		Internal_SwapEquippedWithInventory(Index, TargetSlot);
 	}
 	else
 	{
-		UItemDataAsset* ItemToEquip = InventorySlots[Index].ItemData;
 		EquippedItems.Add(TargetSlot, ItemToEquip);
 		SetItemAtIndex(nullptr, 0, Index);
 		MountItemStats(ItemToEquip);

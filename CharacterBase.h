@@ -5,8 +5,10 @@
 #include "AbilitySystemInterface.h"
 #include "GameplayTagContainer.h"
 #include "InputActionValue.h"
+#include "ActiveGameplayEffectHandle.h"
 // AAA: Forward declare enum to minimize header coupling (avoid pulling entire DataAsset header into every Character include)
 enum class EWeaponType : uint8;
+enum class EEquipmentSlot : uint8;
 #include "CharacterBase.generated.h"
 
 // AAA: Delegate for weapon state machine — CharacterBase broadcasts, InventoryComponent listens (DIP)
@@ -94,9 +96,6 @@ private:
 	void AttachWeaponToSocket(FName SocketName);
 	void SetArmedState(bool bIsArmed);
 
-	// DRY: Shared stat modification — ApplyItemStats(+1) / RemoveItemStats(-1)
-	void ModifyItemStats(class UItemDataAsset* ItemData, float Sign);
-
 	// DRY: Unified stat initialization from a stats struct
 	void ApplyStartingStats(const struct FCharacterStartingStats& Stats);
 
@@ -116,6 +115,26 @@ private:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Setup", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<class UCharacterDataAsset> CharacterClassData;
 
+	// --- MODULAR CHARACTER MESHES (AAA Standard) ---
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class USkeletalMeshComponent> HelmMeshComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class USkeletalMeshComponent> ChestMeshComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class USkeletalMeshComponent> GauntletsMeshComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class USkeletalMeshComponent> LeggingsMeshComp;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class USkeletalMeshComponent> BootsMeshComp;
+
+	void UpdateEquipmentMesh(EEquipmentSlot Slot, TSoftObjectPtr<class USkeletalMesh> MeshAsset);
+	void ClearEquipmentMesh(EEquipmentSlot Slot);
+	[[nodiscard]] class USkeletalMeshComponent* GetMeshComponentForSlot(EEquipmentSlot Slot) const;
+
 	// Silahı karakterin modelinde tutacağımız Component (AAA Standartı: Her zaman kapalı collision)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<class UStaticMeshComponent> WeaponMeshComp;
@@ -123,6 +142,9 @@ private:
 	// Karakterin şu an hedeflediği veya tuttuğu silahın referansı
 	UPROPERTY(Transient)
 	TObjectPtr<class UWeaponDataAsset> CurrentWeaponData;
+
+	// AAA: Takılan ekipmanların buff/efekt Handle'larını (kimliklerini) tutarak temiz bir çıkarma sağlar
+	TMap<EEquipmentSlot, FActiveGameplayEffectHandle> ActiveEquipmentEffects;
 
 public:
 	// --- WEAPON STATE MACHINE DELEGATE ---

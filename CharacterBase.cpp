@@ -27,11 +27,37 @@ ACharacterBase::ACharacterBase()
 	// Çarpışmaları tamamen kapatıyoruz ki mermi sektirmesin, kamerayı sarsmasın veya karakteri itmesin
 	WeaponMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WeaponMeshComp->SetGenerateOverlapEvents(false); // Performans için gereksiz tetiklenmeleri önleriz
+
+	// Modular Character Meshes
+	HelmMeshComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HelmMeshComp"));
+	HelmMeshComp->SetupAttachment(GetMesh());
+
+	ChestMeshComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ChestMeshComp"));
+	ChestMeshComp->SetupAttachment(GetMesh());
+
+	GauntletsMeshComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("GauntletsMeshComp"));
+	GauntletsMeshComp->SetupAttachment(GetMesh());
+
+	LeggingsMeshComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("LeggingsMeshComp"));
+	LeggingsMeshComp->SetupAttachment(GetMesh());
+
+	BootsMeshComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("BootsMeshComp"));
+	BootsMeshComp->SetupAttachment(GetMesh());
 }
 
 void ACharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Setup Modular Meshes to follow the main mesh animation strictly
+	if (USkeletalMeshComponent* MainMesh = GetMesh())
+	{
+		HelmMeshComp->SetLeaderPoseComponent(MainMesh);
+		ChestMeshComp->SetLeaderPoseComponent(MainMesh);
+		GauntletsMeshComp->SetLeaderPoseComponent(MainMesh);
+		LeggingsMeshComp->SetLeaderPoseComponent(MainMesh);
+		BootsMeshComp->SetLeaderPoseComponent(MainMesh);
+	}
 
 	// Load setup from Data Asset
 	InitializeCharacterStats();
@@ -110,7 +136,21 @@ void ACharacterBase::ApplyItemStats(UItemDataAsset* ItemData)
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, WeaponData->WeaponData.BaseDamage);
 	}
 
-	ModifyItemStats(ItemData, +1.0f);
+	UpdateEquipmentMesh(ItemData->ItemData.ValidEquipmentSlot, ItemData->ItemData.EquipmentMesh);
+
+	// AAA GAS integration: Apply the native Gameplay Effect containing bonus stats
+	if (ItemData->ItemData.EquippedStatEffect)
+	{
+		FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
+		EffectContext.AddSourceObject(this);
+		
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(ItemData->ItemData.EquippedStatEffect, 1.0f, EffectContext);
+		if (SpecHandle.IsValid())
+		{
+			FActiveGameplayEffectHandle ActiveEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+			ActiveEquipmentEffects.Add(ItemData->ItemData.ValidEquipmentSlot, ActiveEffectHandle);
+		}
+	}
 }
 
 void ACharacterBase::RemoveItemStats(UItemDataAsset* ItemData)
@@ -125,23 +165,14 @@ void ACharacterBase::RemoveItemStats(UItemDataAsset* ItemData)
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, -WeaponData->WeaponData.BaseDamage);
 	}
 
-	ModifyItemStats(ItemData, -1.0f);
-}
+	ClearEquipmentMesh(ItemData->ItemData.ValidEquipmentSlot);
 
-void ACharacterBase::ModifyItemStats(UItemDataAsset* ItemData, float Sign)
-{
-	// DRY: Single Source of Truth — adding a new bonus stat requires editing only this method
-	const FItemBonusStats& Bonus = ItemData->ItemData.BonusStats;
-
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetStrengthAttribute(),              EGameplayModOp::Additive, Sign * Bonus.BonusStrength);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAgilityAttribute(),               EGameplayModOp::Additive, Sign * Bonus.BonusAgility);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetIntellectAttribute(),             EGameplayModOp::Additive, Sign * Bonus.BonusIntellect);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetStaminaAttribute(),               EGameplayModOp::Additive, Sign * Bonus.BonusStamina);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetArmorAttribute(),                 EGameplayModOp::Additive, Sign * Bonus.BonusArmor);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetCriticalStrikeChanceAttribute(),  EGameplayModOp::Additive, Sign * Bonus.BonusCriticalStrikeChance);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetMovementSpeedAttribute(),         EGameplayModOp::Additive, Sign * Bonus.BonusMovementSpeed);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetSpellDamageAttribute(),           EGameplayModOp::Additive, Sign * Bonus.BonusMagicDamage);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetCastSpeedAttribute(),             EGameplayModOp::Additive, Sign * Bonus.BonusCastSpeed);
+	// AAA GAS integration: Remove the previously applied stat GE
+	if (FActiveGameplayEffectHandle* HandlePtr = ActiveEquipmentEffects.Find(ItemData->ItemData.ValidEquipmentSlot))
+	{
+		AbilitySystemComponent->RemoveActiveGameplayEffect(*HandlePtr);
+		ActiveEquipmentEffects.Remove(ItemData->ItemData.ValidEquipmentSlot);
+	}
 }
 
 void ACharacterBase::SetPendingWeapon(UWeaponDataAsset* InitialWeaponData)
@@ -269,4 +300,39 @@ EWeaponType ACharacterBase::GetEquippedWeaponType() const
 		return CurrentWeaponData->WeaponData.WeaponType;
 	}
 	return EWeaponType::None;
+}
+
+void ACharacterBase::UpdateEquipmentMesh(EEquipmentSlot Slot, TSoftObjectPtr<USkeletalMesh> MeshAsset)
+{
+	USkeletalMeshComponent* TargetComp = GetMeshComponentForSlot(Slot);
+	if (!TargetComp) return;
+
+	if (MeshAsset.IsNull())
+	{
+		TargetComp->SetSkeletalMesh(nullptr);
+		return;
+	}
+
+	TargetComp->SetSkeletalMesh(MeshAsset.LoadSynchronous());
+}
+
+void ACharacterBase::ClearEquipmentMesh(EEquipmentSlot Slot)
+{
+	if (USkeletalMeshComponent* TargetComp = GetMeshComponentForSlot(Slot))
+	{
+		TargetComp->SetSkeletalMesh(nullptr);
+	}
+}
+
+USkeletalMeshComponent* ACharacterBase::GetMeshComponentForSlot(EEquipmentSlot Slot) const
+{
+	switch (Slot)
+	{
+		case EEquipmentSlot::Helm: return HelmMeshComp;
+		case EEquipmentSlot::Chest: return ChestMeshComp;
+		case EEquipmentSlot::Gauntlets: return GauntletsMeshComp;
+		case EEquipmentSlot::Leggings: return LeggingsMeshComp;
+		case EEquipmentSlot::Boots: return BootsMeshComp;
+		default: return nullptr;
+	}
 }
