@@ -8,9 +8,9 @@
 ---
 
 <div align="center">
+  <img src="Gifs/ItemDetail.gif" width="32%">
   <img src="Gifs/ItemEquip.gif" width="32%">
   <img src="Gifs/ItemUnequip.gif" width="32%">
-  <img src="Gifs/ItemDetail.gif" width="32%">
   <p><em>Event-driven UI updates, drag & drop interactions, and dynamic tooltip system.</em></p>
 </div>
 
