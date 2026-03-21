@@ -5,6 +5,12 @@
 ![Architecture](https://img.shields.io/badge/Architecture-Modular-green)
 ![System](https://img.shields.io/badge/System-Data--Driven-orange)
 
+## 📌 Important Note
+
+This is not a plug-and-play system.
+
+The code is extracted from a larger project and simplified to showcase architectural decisions, not to be directly integrated into a fresh project without context.
+
 ---
 
 <div align="center">
