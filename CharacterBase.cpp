@@ -125,31 +125,45 @@ void ACharacterBase::ApplyStartingStats(const FCharacterStartingStats& Stats)
 	AttributeSet->InitArmor(Stats.BaseArmor);
 }
 
+// ==============================================================================
+// AAA DRY: Shared GE Application — Single Source of Truth
+// ==============================================================================
+
+FActiveGameplayEffectHandle ACharacterBase::ApplyGameplayEffectFromItem(UItemDataAsset* ItemData)
+{
+	if (!AbilitySystemComponent || !ItemData || !ItemData->ItemData.EquippedStatEffect)
+	{
+		return FActiveGameplayEffectHandle();
+	}
+
+	FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
+	EffectContext.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(ItemData->ItemData.EquippedStatEffect, 1.0f, EffectContext);
+	if (SpecHandle.IsValid())
+	{
+		return AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
+
+	return FActiveGameplayEffectHandle();
+}
+
 void ACharacterBase::ApplyItemStats(UItemDataAsset* ItemData)
 {
 	if (!AbilitySystemComponent || !ItemData) return;
 
 	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
 	{
-		// Set weapon interval as base for haste math (Override — weapon defines the base)
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, WeaponData->WeaponData.WeaponCastSpeed);
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, WeaponData->WeaponData.BaseDamage);
 	}
 
 	UpdateEquipmentMesh(ItemData->ItemData.ValidEquipmentSlot, ItemData->ItemData.EquipmentMesh);
 
-	// AAA GAS integration: Apply the native Gameplay Effect containing bonus stats
-	if (ItemData->ItemData.EquippedStatEffect)
+	FActiveGameplayEffectHandle Handle = ApplyGameplayEffectFromItem(ItemData);
+	if (Handle.IsValid())
 	{
-		FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
-		EffectContext.AddSourceObject(this);
-		
-		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(ItemData->ItemData.EquippedStatEffect, 1.0f, EffectContext);
-		if (SpecHandle.IsValid())
-		{
-			FActiveGameplayEffectHandle ActiveEffectHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-			ActiveEquipmentEffects.Add(ItemData->ItemData.ValidEquipmentSlot, ActiveEffectHandle);
-		}
+		ActiveEquipmentEffects.Add(ItemData->ItemData.ValidEquipmentSlot, Handle);
 	}
 }
 
@@ -159,7 +173,6 @@ void ACharacterBase::RemoveItemStats(UItemDataAsset* ItemData)
 
 	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
 	{
-		// Reset weapon interval to 0 (Unarmed — no attack interval in UI/Logic)
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, 0.0f);
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetCastSpeedAttribute(), EGameplayModOp::Override, 0.0f);
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, -WeaponData->WeaponData.BaseDamage);
@@ -167,12 +180,17 @@ void ACharacterBase::RemoveItemStats(UItemDataAsset* ItemData)
 
 	ClearEquipmentMesh(ItemData->ItemData.ValidEquipmentSlot);
 
-	// AAA GAS integration: Remove the previously applied stat GE
 	if (FActiveGameplayEffectHandle* HandlePtr = ActiveEquipmentEffects.Find(ItemData->ItemData.ValidEquipmentSlot))
 	{
 		AbilitySystemComponent->RemoveActiveGameplayEffect(*HandlePtr);
 		ActiveEquipmentEffects.Remove(ItemData->ItemData.ValidEquipmentSlot);
 	}
+}
+
+void ACharacterBase::ApplyConsumableEffect(UItemDataAsset* ItemData)
+{
+	// Consumable effects are instant/duration — no need to store the handle
+	ApplyGameplayEffectFromItem(ItemData);
 }
 
 void ACharacterBase::SetPendingWeapon(UWeaponDataAsset* InitialWeaponData)
@@ -313,6 +331,7 @@ void ACharacterBase::UpdateEquipmentMesh(EEquipmentSlot Slot, TSoftObjectPtr<USk
 		return;
 	}
 
+	// TODO: Convert to async load (RequestAsyncLoad) for hitch-free armor equipping in production
 	TargetComp->SetSkeletalMesh(MeshAsset.LoadSynchronous());
 }
 

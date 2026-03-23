@@ -1,4 +1,5 @@
 #include "UI/ItemTooltipWidget.h"
+#include "DataAssets/ItemDataAsset.h"
 #include "DataAssets/WeaponDataAsset.h"
 #include "UI/StatRowWidget.h"
 #include "Components/TextBlock.h"
@@ -22,7 +23,7 @@ UItemTooltipWidget::UItemTooltipWidget(const FObjectInitializer& ObjectInitializ
 	BonusStatPadding = FMargin(0.0f, 2.0f, 0.0f, 2.0f);
 }
 
-void UItemTooltipWidget::SetupTooltip(UWeaponDataAsset* ItemData)
+void UItemTooltipWidget::SetupTooltip(UItemDataAsset* ItemData)
 {
 	// AAA: Fail-fast Validation
 	if (!ItemData) return;
@@ -35,7 +36,7 @@ void UItemTooltipWidget::SetupTooltip(UWeaponDataAsset* ItemData)
 	UpdateEconomy(ItemData);
 }
 
-void UItemTooltipWidget::UpdateItemName(UWeaponDataAsset* ItemData)
+void UItemTooltipWidget::UpdateItemName(UItemDataAsset* ItemData)
 {
 	if (!ItemNameText) return;
 
@@ -43,28 +44,48 @@ void UItemTooltipWidget::UpdateItemName(UWeaponDataAsset* ItemData)
 	ItemNameText->SetColorAndOpacity(GetColorForRarity(ItemData->ItemData.Rarity));
 }
 
-void UItemTooltipWidget::UpdateItemType(UWeaponDataAsset* ItemData)
+void UItemTooltipWidget::UpdateItemType(UItemDataAsset* ItemData)
 {
 	if (!ItemTypeText) return;
 
-	const FString TypeStr = GetStringForWeaponType(ItemData->WeaponData.WeaponType);
+	FString TypeStr;
+	
+	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
+	{
+		TypeStr = GetStringForWeaponType(WeaponData->WeaponData.WeaponType);
+	}
+	else
+	{
+		TypeStr = GetStringForItemType(ItemData->ItemData.ItemType);
+	}
+
 	ItemTypeText->SetText(FText::FromString(TypeStr));
 }
 
-void UItemTooltipWidget::UpdateBaseStats(UWeaponDataAsset* ItemData)
+void UItemTooltipWidget::UpdateBaseStats(UItemDataAsset* ItemData)
 {
-	if (BaseDamageText)
+	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
 	{
-		BaseDamageText->SetText(FText::Format(NSLOCTEXT("Tooltip", "DamageFmt", "{0} Damage"), FText::AsNumber(FMath::RoundToInt(ItemData->WeaponData.BaseDamage))));
-	}
+		if (BaseDamageText)
+		{
+			BaseDamageText->SetText(FText::Format(NSLOCTEXT("Tooltip", "DamageFmt", "{0} Damage"), FText::AsNumber(FMath::RoundToInt(WeaponData->WeaponData.BaseDamage))));
+			BaseDamageText->SetVisibility(ESlateVisibility::Visible);
+		}
 
-	if (AttackSpeedText)
+		if (AttackSpeedText)
+		{
+			AttackSpeedText->SetText(FText::Format(NSLOCTEXT("Tooltip", "SpeedFmt", "Speed {0}"), FText::AsNumber(WeaponData->WeaponData.WeaponCastSpeed)));
+			AttackSpeedText->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
+	else
 	{
-		AttackSpeedText->SetText(FText::Format(NSLOCTEXT("Tooltip", "SpeedFmt", "Speed {0}"), FText::AsNumber(ItemData->WeaponData.WeaponCastSpeed)));
+		if (BaseDamageText) BaseDamageText->SetVisibility(ESlateVisibility::Collapsed);
+		if (AttackSpeedText) AttackSpeedText->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
 
-void UItemTooltipWidget::UpdateBonusStats(UWeaponDataAsset* ItemData)
+void UItemTooltipWidget::UpdateBonusStats(UItemDataAsset* ItemData)
 {
 	if (!BonusStatsBox || !StatRowClass) return;
 
@@ -95,7 +116,7 @@ void UItemTooltipWidget::UpdateBonusStats(UWeaponDataAsset* ItemData)
 	}
 }
 
-void UItemTooltipWidget::UpdateEconomy(UWeaponDataAsset* ItemData)
+void UItemTooltipWidget::UpdateEconomy(UItemDataAsset* ItemData)
 {
 	if (!SellPriceText) return;
 
@@ -134,6 +155,19 @@ FString UItemTooltipWidget::GetStringForWeaponType(EWeaponType Type) const
 		case EWeaponType::Dagger:	return TEXT("Dagger");
 		case EWeaponType::None:
 		default:					return TEXT("Weapon");
+	}
+}
+
+FString UItemTooltipWidget::GetStringForItemType(EItemType Type) const
+{
+	switch (Type)
+	{
+		case EItemType::Weapon:		return TEXT("Weapon");
+		case EItemType::Armor:		return TEXT("Armor");
+		case EItemType::Consumable:	return TEXT("Consumable");
+		case EItemType::Quest:		return TEXT("Quest Item");
+		case EItemType::None:
+		default:					return TEXT("Item");
 	}
 }
 

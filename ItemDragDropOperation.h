@@ -4,18 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/DragDropOperation.h"
-#include "DataAssets/WeaponDataAsset.h"
-#include "WeaponDragDropOperation.generated.h"
+#include "DataAssets/ItemDataAsset.h"
+#include "ItemDragDropOperation.generated.h"
 
 UCLASS(BlueprintType)
-class WOWCLONE_API UWeaponDragDropOperation : public UDragDropOperation
+class WOWCLONE_API UItemDragDropOperation : public UDragDropOperation
 {
 	GENERATED_BODY()
 	
 public:
-	// The weapon data being dragged
+	// The item data being dragged
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DragDrop Payload", meta = (ExposeOnSpawn = "true"))
-	TObjectPtr<UWeaponDataAsset> PayloadWeapon;
+	TObjectPtr<UItemDataAsset> PayloadItem;
 
 	// The index of the slot it came from (if it came from inventory)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DragDrop Payload", meta = (ExposeOnSpawn = "true"))

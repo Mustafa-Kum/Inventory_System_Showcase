@@ -63,6 +63,9 @@ public:
 	virtual void ApplyItemStats(class UItemDataAsset* ItemData);
 	virtual void RemoveItemStats(class UItemDataAsset* ItemData);
 
+	// Tüketilebilir eşyalar (Consumables) için tek seferlik etki (AAA Standard)
+	virtual void ApplyConsumableEffect(class UItemDataAsset* ItemData);
+
 	// --- VIRTUAL INPUT HOOKS (AAA: DIP - Decoupling Components from Hero class) ---
 	virtual void Move(const FInputActionValue& Value) {}
 	virtual void Look(const FInputActionValue& Value) {}
@@ -89,6 +92,9 @@ protected:
 
 	// AAA DRY: Shared tag-swap utility used by SetArmedState and subclass combat tag toggles
 	void ToggleGameplayTagPair(class UAbilitySystemComponent* ASC, const FGameplayTag& TagToRemove, const FGameplayTag& TagToAdd);
+
+	// AAA DRY: Shared GE application helper — single source of truth for applying item effects
+	FActiveGameplayEffectHandle ApplyGameplayEffectFromItem(class UItemDataAsset* ItemData);
 
 private:
 	// DRY Helpers: Eliminate duplication between Equip/Unequip notify methods

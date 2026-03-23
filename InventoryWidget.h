@@ -6,27 +6,8 @@
 
 // Forward Declarations
 class UWrapBox;
-class UWeaponSlotWidget;
+class UItemSlotWidget;
 class UInventoryComponent;
-class UWeaponDataAsset;
-
-/**
- * AAA: Helper struct for equipment slot initialization
- */
-USTRUCT(BlueprintType)
-struct FEquipmentSlotEntry
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	class UWeaponSlotWidget* Slot = nullptr;
-
-	UPROPERTY(BlueprintReadOnly)
-	class UWeaponDataAsset* Data = nullptr;
-
-	FEquipmentSlotEntry() {}
-	FEquipmentSlotEntry(class UWeaponSlotWidget* InSlot, class UWeaponDataAsset* InData) : Slot(InSlot), Data(InData) {}
-};
 
 /**
  * AAA: Format specifier for stat display — replaces brittle string-matching logic
@@ -81,45 +62,45 @@ protected:
 
 	// Configurable visual structure class for child slots
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory UI|Classes")
-	TSubclassOf<UWeaponSlotWidget> WeaponSlotClass;
+	TSubclassOf<UItemSlotWidget> ItemSlotClass;
 
 	// --- Equipment Slots (Knight Online Style) ---
 	
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> HelmSlot;
+	TObjectPtr<UItemSlotWidget> HelmSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> NecklaceSlot;
+	TObjectPtr<UItemSlotWidget> NecklaceSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> ChestSlot;
+	TObjectPtr<UItemSlotWidget> ChestSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> CloakSlot;
+	TObjectPtr<UItemSlotWidget> CloakSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> BeltSlot;
+	TObjectPtr<UItemSlotWidget> BeltSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> MainHandSlot;
+	TObjectPtr<UItemSlotWidget> MainHandSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> OffHandSlot;
+	TObjectPtr<UItemSlotWidget> OffHandSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> LeftRingSlot;
+	TObjectPtr<UItemSlotWidget> LeftRingSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> RightRingSlot;
+	TObjectPtr<UItemSlotWidget> RightRingSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> GauntletsSlot;
+	TObjectPtr<UItemSlotWidget> GauntletsSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> LeggingsSlot;
+	TObjectPtr<UItemSlotWidget> LeggingsSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UWeaponSlotWidget> BootsSlot;
+	TObjectPtr<UItemSlotWidget> BootsSlot;
 
 	// --- Layout Placeholders ---
 

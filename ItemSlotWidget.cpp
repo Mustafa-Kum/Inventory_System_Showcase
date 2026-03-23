@@ -1,4 +1,4 @@
-#include "UI/WeaponSlotWidget.h"
+#include "UI/ItemSlotWidget.h"
 #include "DataAssets/ItemDataAsset.h"
 #include "Components/InventoryComponent.h"
 #include "Components/Button.h"
@@ -7,13 +7,13 @@
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
-#include "WeaponDragDropOperation.h"
+#include "ItemDragDropOperation.h"
 #include "UI/ItemTooltipWidget.h"
 
 // Custom Log Category (AAA Standard)
-DEFINE_LOG_CATEGORY_STATIC(LogWeaponSlot, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogItemSlot, Log, All);
 
-void UWeaponSlotWidget::NativeConstruct()
+void UItemSlotWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
@@ -23,7 +23,7 @@ void UWeaponSlotWidget::NativeConstruct()
 	}
 }
 
-void UWeaponSlotWidget::InitializeSlot(UItemDataAsset* InItemData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot)
+void UItemSlotWidget::InitializeSlot(UItemDataAsset* InItemData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot)
 {
 	AssignSlotData(InItemData, InIndex, InInventoryComp, InContext, InEqSlot);
 
@@ -37,7 +37,7 @@ void UWeaponSlotWidget::InitializeSlot(UItemDataAsset* InItemData, int32 InIndex
 	SetupTooltipWidget();
 }
 
-void UWeaponSlotWidget::AssignSlotData(UItemDataAsset* InItemData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot)
+void UItemSlotWidget::AssignSlotData(UItemDataAsset* InItemData, int32 InIndex, UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot)
 {
 	ItemData = InItemData;
 	SlotIndex = InIndex;
@@ -46,7 +46,7 @@ void UWeaponSlotWidget::AssignSlotData(UItemDataAsset* InItemData, int32 InIndex
 	EquipmentSlot = InEqSlot;
 }
 
-void UWeaponSlotWidget::ClearSlotVisuals()
+void UItemSlotWidget::ClearSlotVisuals()
 {
 	if (IconImage)
 	{
@@ -54,15 +54,15 @@ void UWeaponSlotWidget::ClearSlotVisuals()
 		IconImage->SetColorAndOpacity(EmptySlotIcon ? FLinearColor(1, 1, 1, 1) : FLinearColor(1, 1, 1, 0));
 	}
 	
-	if (WeaponNameText)
+	if (ItemNameText)
 	{
-		WeaponNameText->SetText(FText::GetEmpty());
+		ItemNameText->SetText(FText::GetEmpty());
 	}
 
 	SetToolTip(nullptr);
 }
 
-void UWeaponSlotWidget::UpdateSlotVisuals()
+void UItemSlotWidget::UpdateSlotVisuals()
 {
 	if (IconImage)
 	{
@@ -70,13 +70,13 @@ void UWeaponSlotWidget::UpdateSlotVisuals()
 		LoadAndSetIconAsync(ItemData->ItemData.ItemIcon);
 	}
 
-	if (WeaponNameText)
+	if (ItemNameText)
 	{
-		WeaponNameText->SetText(ItemData->ItemData.ItemName);
+		ItemNameText->SetText(ItemData->ItemData.ItemName);
 	}
 }
 
-void UWeaponSlotWidget::SetupTooltipWidget()
+void UItemSlotWidget::SetupTooltipWidget()
 {
 	if (!TooltipClass) return;
 
@@ -84,12 +84,12 @@ void UWeaponSlotWidget::SetupTooltipWidget()
 	UItemTooltipWidget* TooltipWidget = CreateWidget<UItemTooltipWidget>(this, TooltipClass);
 	if (TooltipWidget)
 	{
-		TooltipWidget->SetupTooltip(Cast<UWeaponDataAsset>(ItemData));
+		TooltipWidget->SetupTooltip(ItemData);
 		SetToolTip(TooltipWidget);
 	}
 }
 
-void UWeaponSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& IconPtr)
+void UItemSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& IconPtr)
 {
 	if (IconPtr.IsPending())
 	{
@@ -109,34 +109,59 @@ void UWeaponSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& Ic
 	}
 }
 
-void UWeaponSlotWidget::OnSlotButtonClicked()
+void UItemSlotWidget::OnSlotButtonClicked()
 {
-	if (!InventoryComp) return;
-	OnSlotClicked.Broadcast(SlotIndex);
+	// Reserved for future use (e.g., selection highlight)
 }
 
-FReply UWeaponSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+FReply UItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && ItemData != nullptr)
+	if (ItemData == nullptr)
+	{
+		return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+	}
+
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		return UWidgetBlueprintLibrary::DetectDragIfPressed(InMouseEvent, this, EKeys::LeftMouseButton).NativeReply;
+	}
+
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && InventoryComp)
+	{
+		if (SlotContext == EItemSlotContext::Inventory)
+		{
+			if (ItemData->ItemData.ItemType == EItemType::Consumable)
+			{
+				InventoryComp->ConsumeItemAtIndex(SlotIndex);
+			}
+			else
+			{
+				InventoryComp->EquipItemAtIndex(SlotIndex, ItemData->ItemData.ValidEquipmentSlot);
+			}
+			return FReply::Handled();
+		}
+		else if (SlotContext == EItemSlotContext::Equipment)
+		{
+			// Right click an equipped item to unequip it
+			InventoryComp->UnequipItem(EquipmentSlot);
+			return FReply::Handled();
+		}
 	}
 
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }
 
-void UWeaponSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
+void UItemSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
 {
 	Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
 
 	if (!ItemData || !InventoryComp) return;
 
-	UWeaponDragDropOperation* DragOperation = Cast<UWeaponDragDropOperation>(UWidgetBlueprintLibrary::CreateDragDropOperation(UWeaponDragDropOperation::StaticClass()));
+	UItemDragDropOperation* DragOperation = Cast<UItemDragDropOperation>(UWidgetBlueprintLibrary::CreateDragDropOperation(UItemDragDropOperation::StaticClass()));
 	if (!DragOperation) return;
 
-	// In WeaponDragDropOperation, PayloadWeapon needs to be cast correctly or used as is if it hasn't been changed. Let's assume PayloadWeapon is loosely typed or can hold ItemData.
-	// Fast hack to prevent changing dragdrop header unless necessary for true generic items.
-	DragOperation->PayloadWeapon = Cast<UWeaponDataAsset>(ItemData); 
+	// Assign the generalized ItemData so any item (Armor, Consumable, Weapon) can be dragged
+	DragOperation->PayloadItem = ItemData; 
 	DragOperation->SourceSlotIndex = SlotIndex;
 	DragOperation->SourceContext = SlotContext;
 	DragOperation->DefaultDragVisual = CreateDragVisualWidget();
@@ -144,12 +169,12 @@ void UWeaponSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const 
 	OutOperation = DragOperation;
 }
 
-UWeaponSlotWidget* UWeaponSlotWidget::CreateDragVisualWidget()
+UItemSlotWidget* UItemSlotWidget::CreateDragVisualWidget()
 {
 	TSubclassOf<UUserWidget> VisualClass = DragVisualClass;
 	if (!VisualClass) VisualClass = GetClass();
 
-	UWeaponSlotWidget* VisualWidget = CreateWidget<UWeaponSlotWidget>(GetOwningPlayer(), VisualClass);
+	UItemSlotWidget* VisualWidget = CreateWidget<UItemSlotWidget>(GetOwningPlayer(), VisualClass);
 	
 	if (VisualWidget)
 	{
@@ -160,16 +185,16 @@ UWeaponSlotWidget* UWeaponSlotWidget::CreateDragVisualWidget()
 	return VisualWidget;
 }
 
-bool UWeaponSlotWidget::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+bool UItemSlotWidget::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
 	return true;
 }
 
-bool UWeaponSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+bool UItemSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
 	Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
 
-	UWeaponDragDropOperation* Payload = Cast<UWeaponDragDropOperation>(InOperation);
+	UItemDragDropOperation* Payload = Cast<UItemDragDropOperation>(InOperation);
 	if (!Payload || !InventoryComp) return false;
 
 	if (Payload->SourceContext == SlotContext && Payload->SourceSlotIndex == SlotIndex)
@@ -195,30 +220,30 @@ bool UWeaponSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
 	return false;
 }
 
-bool UWeaponSlotWidget::HandleDropFromInventoryToEquipment(UWeaponDragDropOperation* Payload)
+bool UItemSlotWidget::HandleDropFromInventoryToEquipment(UItemDragDropOperation* Payload)
 {
 	// AAA Drag-Drop VALIDATION! Ensure item fits the slot!
-	if (Payload->PayloadWeapon && Payload->PayloadWeapon->ItemData.ValidEquipmentSlot == EquipmentSlot)
+	if (Payload->PayloadItem && Payload->PayloadItem->ItemData.ValidEquipmentSlot == EquipmentSlot)
 	{
 		InventoryComp->EquipItemAtIndex(Payload->SourceSlotIndex, EquipmentSlot);
 		return true;
 	}
 	else
 	{
-		UE_LOG(LogWeaponSlot, Warning, TEXT("Drag/Drop Validation Failed! Item does not fit this slot."));
+		UE_LOG(LogItemSlot, Warning, TEXT("Drag/Drop Validation Failed! Item does not fit this slot."));
 		return false;
 	}
 }
 
-bool UWeaponSlotWidget::HandleDropFromEquipmentToInventory(UWeaponDragDropOperation* Payload)
+bool UItemSlotWidget::HandleDropFromEquipmentToInventory(UItemDragDropOperation* Payload)
 {
-	InventoryComp->UnequipItemToSlot(Payload->PayloadWeapon->ItemData.ValidEquipmentSlot, SlotIndex);
+	InventoryComp->UnequipItemToSlot(Payload->PayloadItem->ItemData.ValidEquipmentSlot, SlotIndex);
 	return true;
 }
 
-bool UWeaponSlotWidget::HandleDropBetweenInventorySlots(UWeaponDragDropOperation* Payload)
+bool UItemSlotWidget::HandleDropBetweenInventorySlots(UItemDragDropOperation* Payload)
 {
 	InventoryComp->SetItemAtIndex(ItemData, 1, Payload->SourceSlotIndex);
-	InventoryComp->SetItemAtIndex(Payload->PayloadWeapon, 1, SlotIndex);
+	InventoryComp->SetItemAtIndex(Payload->PayloadItem, 1, SlotIndex);
 	return true;
 }

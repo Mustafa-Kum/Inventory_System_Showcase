@@ -8,7 +8,6 @@
 
 // Forward Declarations (AAA: Minimize header coupling)
 class ACharacterBase;
-class AWeaponBase;
 
 // --- WEAPON EQUIP STATE MACHINE ---
 UENUM(BlueprintType)
@@ -69,6 +68,9 @@ public:
 	void UnequipItemToSlot(EEquipmentSlot Slot, int32 TargetIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void ConsumeItemAtIndex(int32 SlotIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ToggleDrawHolster();
 
 	/** --- QUERY API --- */
@@ -94,6 +96,9 @@ protected:
 	[[nodiscard]] bool CanPerformWeaponAction() const;
 
 	void Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot);
+	void ProcessEquipBackend(int32 Index, EEquipmentSlot TargetSlot, UItemDataAsset* ItemToEquip);
+	void HandleTwoHandedEquipConstraints(UItemDataAsset* ItemToEquip, EEquipmentSlot TargetSlot);
+	void ExecuteEquipVisuals(EEquipmentSlot TargetSlot);
 	void Internal_ProcessUnequipFlow(EEquipmentSlot Slot, int32 TargetIndex);
 	void Internal_SwapEquippedWithInventory(int32 Index, EEquipmentSlot TargetSlot);
 	void Internal_HandleWeaponTransition(UWeaponDataAsset* WeaponToTransition, bool bIsEquipping);

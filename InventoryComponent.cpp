@@ -52,17 +52,44 @@ void UInventoryComponent::SetItemAtIndex(UItemDataAsset* Item, int32 Quantity, i
 
 void UInventoryComponent::AddItem(UItemDataAsset* NewItem, int32 Quantity)
 {
-	if (!NewItem) return;
+	if (!NewItem || Quantity <= 0) return;
 
-	const int32 EmptyIndex = FindEmptySlotIndex();
-	
-	if (EmptyIndex == INDEX_NONE)
+	int32 RemainingQuantity = Quantity;
+
+	// Phase 1: Try to stack with existing items (AAA Stacking Logic)
+	for (int32 i = 0; i < MaxInventorySlots; ++i)
 	{
-		UE_LOG(LogInventory, Warning, TEXT("Inventory Full! Could not add item: %s"), *NewItem->ItemData.ItemName.ToString());
-		return;
+		if (InventorySlots[i].IsValid() && InventorySlots[i].ItemData == NewItem)
+		{
+			const int32 SpaceLeft = NewItem->ItemData.MaxStackSize - InventorySlots[i].Quantity;
+			if (SpaceLeft > 0)
+			{
+				const int32 AmountToAdd = FMath::Min(RemainingQuantity, SpaceLeft);
+				InventorySlots[i].Quantity += AmountToAdd;
+				RemainingQuantity -= AmountToAdd;
+				
+				OnInventoryUpdated.Broadcast();
+				UE_LOG(LogInventory, Log, TEXT("Stacked Item: %s to Slot: %d. New Qty: %d"), *NewItem->ItemData.ItemName.ToString(), i, InventorySlots[i].Quantity);
+
+				if (RemainingQuantity <= 0) return;
+			}
+		}
 	}
 
-	SetItemAtIndex(NewItem, Quantity, EmptyIndex);
+	// Phase 2: Add into empty slots
+	while (RemainingQuantity > 0)
+	{
+		const int32 EmptyIndex = FindEmptySlotIndex();
+		if (EmptyIndex == INDEX_NONE)
+		{
+			UE_LOG(LogInventory, Warning, TEXT("Inventory Full! Partially added %d. Dropping %d of %s"), Quantity - RemainingQuantity, RemainingQuantity, *NewItem->ItemData.ItemName.ToString());
+			return;
+		}
+
+		const int32 AmountToAdd = FMath::Min(RemainingQuantity, NewItem->ItemData.MaxStackSize);
+		SetItemAtIndex(NewItem, AmountToAdd, EmptyIndex);
+		RemainingQuantity -= AmountToAdd;
+	}
 }
 
 int32 UInventoryComponent::FindEmptySlotIndex() const
@@ -84,31 +111,53 @@ void UInventoryComponent::EquipItemAtIndex(int32 Index, EEquipmentSlot TargetSlo
 	Internal_ProcessEquipFlow(Index, TargetSlot);
 }
 
+void UInventoryComponent::ConsumeItemAtIndex(int32 SlotIndex)
+{
+	if (!InventorySlots.IsValidIndex(SlotIndex) || !InventorySlots[SlotIndex].IsValid()) return;
+
+	UItemDataAsset* ItemToConsume = InventorySlots[SlotIndex].ItemData;
+	if (!ItemToConsume || ItemToConsume->ItemData.ItemType != EItemType::Consumable) return;
+
+	// AAA: Cache name before potential slot clear to avoid fragile pointer access
+	const FString ConsumedItemName = ItemToConsume->ItemData.ItemName.ToString();
+
+	if (OwnerCharacter)
+	{
+		OwnerCharacter->ApplyConsumableEffect(ItemToConsume);
+	}
+
+	InventorySlots[SlotIndex].Quantity--;
+	const int32 RemainingQuantity = InventorySlots[SlotIndex].Quantity;
+
+	if (RemainingQuantity <= 0)
+	{
+		SetItemAtIndex(nullptr, 0, SlotIndex);
+	}
+	else
+	{
+		OnInventoryUpdated.Broadcast();
+	}
+
+	UE_LOG(LogInventory, Log, TEXT("Consumed item: %s (Remaining: %d)"), *ConsumedItemName, RemainingQuantity);
+}
+
 void UInventoryComponent::Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot)
 {
 	UItemDataAsset* ItemToEquip = InventorySlots[Index].ItemData;
 
-	// AAA Two-Handed Block Logic
-	if (TargetSlot == EEquipmentSlot::MainHand)
-	{
-		if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemToEquip))
-		{
-			if (WeaponData->WeaponData.bIsTwoHanded && HasItemEquippedAtSlot(EEquipmentSlot::OffHand))
-			{
-				UnequipItem(EEquipmentSlot::OffHand);
-			}
-		}
-	}
-	else if (TargetSlot == EEquipmentSlot::OffHand)
-	{
-		if (UWeaponDataAsset* MainHandWeapon = Cast<UWeaponDataAsset>(EquippedItems.FindRef(EEquipmentSlot::MainHand)))
-		{
-			if (MainHandWeapon->WeaponData.bIsTwoHanded)
-			{
-				UnequipItem(EEquipmentSlot::MainHand);
-			}
-		}
-	}
+	// AAA Orchestration Layer
+	// Validation happened in CanEquipItem
+	
+	// Processing Method
+	ProcessEquipBackend(Index, TargetSlot, ItemToEquip);
+
+	// Execution Method
+	ExecuteEquipVisuals(TargetSlot);
+}
+
+void UInventoryComponent::ProcessEquipBackend(int32 Index, EEquipmentSlot TargetSlot, UItemDataAsset* ItemToEquip)
+{
+	HandleTwoHandedEquipConstraints(ItemToEquip, TargetSlot);
 
 	if (HasItemEquippedAtSlot(TargetSlot))
 	{
@@ -120,8 +169,31 @@ void UInventoryComponent::Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot 
 		SetItemAtIndex(nullptr, 0, Index);
 		MountItemStats(ItemToEquip);
 	}
+}
 
-	// Visuals (Only if weapon)
+void UInventoryComponent::HandleTwoHandedEquipConstraints(UItemDataAsset* ItemToEquip, EEquipmentSlot TargetSlot)
+{
+	// Ensure two-handed and off-hand slots maintain mutual exclusivity
+	if (TargetSlot == EEquipmentSlot::MainHand)
+	{
+		UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemToEquip);
+		if (WeaponData && WeaponData->WeaponData.bIsTwoHanded && HasItemEquippedAtSlot(EEquipmentSlot::OffHand))
+		{
+			UnequipItem(EEquipmentSlot::OffHand);
+		}
+	}
+	else if (TargetSlot == EEquipmentSlot::OffHand)
+	{
+		UWeaponDataAsset* MainHandWeapon = Cast<UWeaponDataAsset>(EquippedItems.FindRef(EEquipmentSlot::MainHand));
+		if (MainHandWeapon && MainHandWeapon->WeaponData.bIsTwoHanded)
+		{
+			UnequipItem(EEquipmentSlot::MainHand);
+		}
+	}
+}
+
+void UInventoryComponent::ExecuteEquipVisuals(EEquipmentSlot TargetSlot)
+{
 	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(EquippedItems[TargetSlot]))
 	{
 		OwnerCharacter->SetPendingWeapon(WeaponData);
@@ -139,7 +211,6 @@ void UInventoryComponent::Internal_SwapEquippedWithInventory(int32 Index, EEquip
 {
 	UItemDataAsset* ItemToBag = EquippedItems[TargetSlot];
 	UItemDataAsset* ItemToHand = InventorySlots[Index].ItemData;
-	int32 QtyToHand = InventorySlots[Index].Quantity;
 
 	DismountItemStats(ItemToBag);
 	
@@ -322,7 +393,11 @@ void UInventoryComponent::PlayWeaponMontage(UWeaponDataAsset* LoadedData, UWeapo
 
 bool UInventoryComponent::CanEquipItem(int32 Index, EEquipmentSlot TargetSlot) const
 {
-	return OwnerCharacter && InventorySlots.IsValidIndex(Index) && InventorySlots[Index].IsValid() && !IsWeaponActionInProgress() && !OwnerCharacter->IsInCombat();
+	if (!OwnerCharacter || !InventorySlots.IsValidIndex(Index) || !InventorySlots[Index].IsValid()) return false;
+	if (IsWeaponActionInProgress() || OwnerCharacter->IsInCombat()) return false;
+	
+	// AAA Backend Validation: Ensure item fits the destination slot
+	return InventorySlots[Index].ItemData->ItemData.ValidEquipmentSlot == TargetSlot;
 }
 
 bool UInventoryComponent::CanPerformWeaponAction() const

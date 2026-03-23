@@ -10,10 +10,11 @@
 // AAA: Forward-declare enums to reduce header coupling (full include in .cpp)
 enum class EItemRarity : uint8;
 enum class EWeaponType : uint8;
+enum class EItemType : uint8;
 
 #include "ItemTooltipWidget.generated.h"
 
-class UWeaponDataAsset;
+class UItemDataAsset;
 class UStatRowWidget;
 
 /**
@@ -29,7 +30,7 @@ public:
 
 	// Initializes the tooltip with data
 	UFUNCTION(BlueprintCallable, Category = "Tooltip")
-	void SetupTooltip(UWeaponDataAsset* ItemData);
+	void SetupTooltip(UItemDataAsset* ItemData);
 
 protected:
 	// The Class to spawn for each bonus stat row
@@ -64,11 +65,11 @@ protected:
 
 private:
 	// --- AAA Orchestration Helpers ---
-	void UpdateItemName(UWeaponDataAsset* ItemData);
-	void UpdateItemType(UWeaponDataAsset* ItemData);
-	void UpdateBaseStats(UWeaponDataAsset* ItemData);
-	void UpdateBonusStats(UWeaponDataAsset* ItemData);
-	void UpdateEconomy(UWeaponDataAsset* ItemData);
+	void UpdateItemName(UItemDataAsset* ItemData);
+	void UpdateItemType(UItemDataAsset* ItemData);
+	void UpdateBaseStats(UItemDataAsset* ItemData);
+	void UpdateBonusStats(UItemDataAsset* ItemData);
+	void UpdateEconomy(UItemDataAsset* ItemData);
 
 	// Helper to add a stat row dynamically
 	void AddStatRow(const FString& Prefix, float Value, const FSlateColor& Color, const FString& Suffix);
@@ -76,4 +77,5 @@ private:
 	// --- AAA Pure Formatters (SOLID/DRY) ---
 	[[nodiscard]] FSlateColor GetColorForRarity(EItemRarity Rarity) const;
 	[[nodiscard]] FString GetStringForWeaponType(EWeaponType Type) const;
+	[[nodiscard]] FString GetStringForItemType(EItemType Type) const;
 };

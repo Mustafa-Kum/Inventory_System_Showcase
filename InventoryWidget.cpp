@@ -1,5 +1,5 @@
 #include "UI/InventoryWidget.h"
-#include "UI/WeaponSlotWidget.h"
+#include "UI/ItemSlotWidget.h"
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
 #include "Components/InventoryComponent.h"
@@ -11,7 +11,6 @@
 #include "Components/TextBlock.h"
 #include "AttributeSet.h"
 #include "GameplayEffectTypes.h"
-#include "DataAssets/WeaponDataAsset.h"
 
 // Custom Log Category
 DEFINE_LOG_CATEGORY_STATIC(LogInventoryUI, Log, All);
@@ -68,9 +67,9 @@ void UInventoryWidget::RefreshInventoryGrid()
 
 void UInventoryWidget::PopulateSlots()
 {
-	if (!WeaponSlotClass)
+	if (!ItemSlotClass)
 	{
-		UE_LOG(LogInventoryUI, Error, TEXT("WeaponSlotClass is not set in InventoryWidget. Please assign a BP class."));
+		UE_LOG(LogInventoryUI, Error, TEXT("ItemSlotClass is not set in InventoryWidget. Please assign a BP class."));
 		return;
 	}
 
@@ -134,7 +133,7 @@ void UInventoryWidget::PopulateBackpackGrid()
 
 void UInventoryWidget::CreateAndAddBackpackSlot(UItemDataAsset* ItemData, int32 SlotIndex)
 {
-	UWeaponSlotWidget* NewSlot = CreateWidget<UWeaponSlotWidget>(GetOwningPlayer(), WeaponSlotClass);
+	UItemSlotWidget* NewSlot = CreateWidget<UItemSlotWidget>(GetOwningPlayer(), ItemSlotClass);
 	if (!NewSlot) return;
 
 	NewSlot->InitializeSlot(ItemData, SlotIndex, InventoryComp, EItemSlotContext::Inventory, EEquipmentSlot::None);

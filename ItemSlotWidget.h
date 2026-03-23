@@ -6,7 +6,7 @@
 // AAA: Forward-declare enum to reduce header coupling (full include in .cpp)
 enum class EItemSlotContext : uint8;
 
-#include "WeaponSlotWidget.generated.h"
+#include "ItemSlotWidget.generated.h"
 
 class UItemDataAsset;
 class UButton;
@@ -14,10 +14,8 @@ class UImage;
 class UTextBlock;
 class UInventoryComponent;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponSlotClicked, int32, SlotIndex);
-
 UCLASS(Abstract)
-class WOWCLONE_API UWeaponSlotWidget : public UUserWidget
+class WOWCLONE_API UItemSlotWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
@@ -25,9 +23,6 @@ public:
 	// Setup slot data with explicit context so the slot "knows" what its purpose is
 	UFUNCTION(BlueprintCallable, Category = "Inventory UI")
 	void InitializeSlot(UItemDataAsset* InItemData, int32 InIndex, class UInventoryComponent* InInventoryComp, EItemSlotContext InContext, EEquipmentSlot InEqSlot = EEquipmentSlot::None);
-
-	UPROPERTY(BlueprintAssignable, Category = "Events")
-	FOnWeaponSlotClicked OnSlotClicked;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DragDrop")
 	TSubclassOf<UUserWidget> DragVisualClass;
@@ -54,7 +49,7 @@ protected:
 	TObjectPtr<class UTexture2D> EmptySlotIcon;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UTextBlock> WeaponNameText;
+	TObjectPtr<UTextBlock> ItemNameText;
 
 private:
 	UFUNCTION()
@@ -77,9 +72,9 @@ private:
 	void ClearSlotVisuals();
 	void UpdateSlotVisuals();
 	void SetupTooltipWidget();
-	UWeaponSlotWidget* CreateDragVisualWidget();
+	UItemSlotWidget* CreateDragVisualWidget();
 
-	bool HandleDropFromInventoryToEquipment(class UWeaponDragDropOperation* Payload);
-	bool HandleDropFromEquipmentToInventory(class UWeaponDragDropOperation* Payload);
-	bool HandleDropBetweenInventorySlots(class UWeaponDragDropOperation* Payload);
+	bool HandleDropFromInventoryToEquipment(class UItemDragDropOperation* Payload);
+	bool HandleDropFromEquipmentToInventory(class UItemDragDropOperation* Payload);
+	bool HandleDropBetweenInventorySlots(class UItemDragDropOperation* Payload);
 };
