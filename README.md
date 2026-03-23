@@ -1,4 +1,4 @@
-# 🧠 Inventory System Showcase (Unreal Engine 5)
+# Building My RPG — Part 1: Inventory System Showcase (Unreal Engine 5)
 
 ![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.0%2B-blue?logo=unrealengine&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-High_Performance-blue)
