@@ -52,13 +52,15 @@ protected:
 	TObjectPtr<UTextBlock> ItemNameText;
 
 private:
-	UFUNCTION()
-	void OnSlotButtonClicked();
-
 	void LoadAndSetIconAsync(const TSoftObjectPtr<class UTexture2D>& IconPtr);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UItemDataAsset> ItemData;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UItemTooltipWidget> TooltipWidgetInstance;
+
+	TSoftObjectPtr<class UTexture2D> PendingIconAsset;
 
 	int32 SlotIndex = -1;
 	
@@ -73,6 +75,12 @@ private:
 	void UpdateSlotVisuals();
 	void SetupTooltipWidget();
 	UItemSlotWidget* CreateDragVisualWidget();
+	[[nodiscard]] bool CanProcessRightClick() const;
+	FReply HandleRightClickAction();
+	FReply HandleInventoryRightClickAction();
+	FReply HandleEquipmentRightClickAction();
+	[[nodiscard]] bool CanHandleDropPayload(const class UItemDragDropOperation* Payload) const;
+	[[nodiscard]] bool IsDropFromSameSource(const class UItemDragDropOperation* Payload) const;
 
 	bool HandleDropFromInventoryToEquipment(class UItemDragDropOperation* Payload);
 	bool HandleDropFromEquipmentToInventory(class UItemDragDropOperation* Payload);

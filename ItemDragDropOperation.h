@@ -24,4 +24,8 @@ public:
 	// Context indicating whether it was dragged from the backpack or the equipment slot
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DragDrop Payload", meta = (ExposeOnSpawn = "true"))
 	EItemSlotContext SourceContext = EItemSlotContext::Inventory;
+
+	// The actual equipment slot the drag started from, when applicable
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DragDrop Payload", meta = (ExposeOnSpawn = "true"))
+	EEquipmentSlot SourceEquipmentSlot = EEquipmentSlot::None;
 };

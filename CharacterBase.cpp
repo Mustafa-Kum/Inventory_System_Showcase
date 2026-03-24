@@ -43,6 +43,8 @@ ACharacterBase::ACharacterBase()
 
 	BootsMeshComp = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("BootsMeshComp"));
 	BootsMeshComp->SetupAttachment(GetMesh());
+
+	bWantsWeaponArmed = 0;
 }
 
 void ACharacterBase::BeginPlay()
@@ -99,30 +101,36 @@ void ACharacterBase::InitializeCharacterStats()
 		FallbackStats.BaseMovementSpeed = 350.0f;
 		FallbackStats.BasePhysicalDamage = 10.0f;
 		FallbackStats.BaseMagicDamage = 10.0f;
+		FallbackStats.BaseMaxMana = 100.0f;
 		ApplyStartingStats(FallbackStats);
 	}
-	
-	// Force an update to allow PreAttributeChange scaling to calculate derived base values
-	// by simulating an update of the primary stats by +0 (dirty trick but fast).
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetStrengthAttribute(), EGameplayModOp::Additive, 0.0f);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAgilityAttribute(), EGameplayModOp::Additive, 0.0f);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetIntellectAttribute(), EGameplayModOp::Additive, 0.0f);
-	AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetStaminaAttribute(), EGameplayModOp::Additive, 0.0f);
 }
 
 void ACharacterBase::ApplyStartingStats(const FCharacterStartingStats& Stats)
 {
-	AttributeSet->InitStrength(Stats.InitialStrength);
-	AttributeSet->InitAgility(Stats.InitialAgility);
-	AttributeSet->InitIntellect(Stats.InitialIntellect);
-	AttributeSet->InitStamina(Stats.InitialStamina);
-	AttributeSet->InitCriticalStrikeChance(Stats.BaseCriticalStrikeChance);
-	AttributeSet->InitMovementSpeed(Stats.BaseMovementSpeed);
+	if (!AttributeSet) return;
+
+	// 1. Initialize Base Derived Values and Non-Scaling Attributes (Quiet Init)
 	AttributeSet->InitHealth(100.0f);
 	AttributeSet->InitMaxHealth(100.0f);
+	AttributeSet->InitMana(Stats.BaseMaxMana);
+	AttributeSet->InitMaxMana(Stats.BaseMaxMana);
+	
+	AttributeSet->InitCriticalStrikeChance(Stats.BaseCriticalStrikeChance);
+	AttributeSet->InitMovementSpeed(Stats.BaseMovementSpeed);
 	AttributeSet->InitAttackDamage(Stats.BasePhysicalDamage);
 	AttributeSet->InitSpellDamage(Stats.BaseMagicDamage);
 	AttributeSet->InitArmor(Stats.BaseArmor);
+	
+	// Ensure Weapon Interval is set so Agility scaling has a base to work from
+	AttributeSet->InitWeaponBaseInterval(0.0f); 
+
+	// 2. Set Primary Stats (Active Setters trigger PreAttributeChange Scaling logic)
+	// This ensures logic like "1 Stamina = 10 MaxHealth" is applied on top of the base 100.0.
+	AttributeSet->SetStrength(Stats.InitialStrength);
+	AttributeSet->SetAgility(Stats.InitialAgility);
+	AttributeSet->SetIntellect(Stats.InitialIntellect);
+	AttributeSet->SetStamina(Stats.InitialStamina);
 }
 
 // ==============================================================================
@@ -174,7 +182,6 @@ void ACharacterBase::RemoveItemStats(UItemDataAsset* ItemData)
 	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
 	{
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetWeaponBaseIntervalAttribute(), EGameplayModOp::Override, 0.0f);
-		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetCastSpeedAttribute(), EGameplayModOp::Override, 0.0f);
 		AbilitySystemComponent->ApplyModToAttributeUnsafe(UCharacterAttributeSet::GetAttackDamageAttribute(), EGameplayModOp::Additive, -WeaponData->WeaponData.BaseDamage);
 	}
 
@@ -216,7 +223,7 @@ void ACharacterBase::OnWeaponMeshLoaded(UWeaponDataAsset* LoadedWeaponData)
 	if (IsWeaponLoadValid(LoadedWeaponData))
 	{
 		ApplyWeaponMesh(LoadedWeaponData);
-		SnapWeaponToInitialSocket(LoadedWeaponData);
+		AttachLoadedWeaponToDesiredSocket(LoadedWeaponData);
 	}
 }
 
@@ -234,17 +241,17 @@ void ACharacterBase::ApplyWeaponMesh(UWeaponDataAsset* LoadedWeaponData)
 	}
 }
 
-void ACharacterBase::SnapWeaponToInitialSocket(UWeaponDataAsset* LoadedWeaponData)
+void ACharacterBase::AttachLoadedWeaponToDesiredSocket(UWeaponDataAsset* LoadedWeaponData)
 {
-	// Başlangıçta silahı direkt olarak sırtına (Holster) koyalım, daha Equip edilmedi
-	AttachWeaponToSocket(LoadedWeaponData->WeaponData.HolsterSocketName);
+	AttachWeaponToSocket(GetDesiredWeaponSocketName(LoadedWeaponData));
 }
 
 void ACharacterBase::OnWeaponEquipNotify()
 {
 	if (CanProcessWeaponNotify())
 	{
-		AttachWeaponToSocket(CurrentWeaponData->WeaponData.EquipSocketName);
+		bWantsWeaponArmed = 1;
+		AttachWeaponToSocket(GetDesiredWeaponSocketName(CurrentWeaponData));
 		SetArmedState(true);
 	}
 
@@ -256,7 +263,8 @@ void ACharacterBase::OnWeaponUnequipNotify()
 	// Animasyon o frame'e geldiğinde (Kılıç sırta girdiği an) çalışır
 	if (CanProcessWeaponNotify())
 	{
-		AttachWeaponToSocket(CurrentWeaponData->WeaponData.HolsterSocketName);
+		bWantsWeaponArmed = 0;
+		AttachWeaponToSocket(GetDesiredWeaponSocketName(CurrentWeaponData));
 		SetArmedState(false);
 	}
 
@@ -270,6 +278,7 @@ void ACharacterBase::ClearWeaponMesh()
 		WeaponMeshComp->SetStaticMesh(nullptr);
 	}
 	CurrentWeaponData = nullptr;
+	bWantsWeaponArmed = 0;
 }
 
 // ==============================================================================
@@ -284,6 +293,16 @@ bool ACharacterBase::CanProcessWeaponNotify() const
 void ACharacterBase::AttachWeaponToSocket(FName SocketName)
 {
 	WeaponMeshComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, SocketName);
+}
+
+FName ACharacterBase::GetDesiredWeaponSocketName(const UWeaponDataAsset* WeaponData) const
+{
+	if (!WeaponData)
+	{
+		return NAME_None;
+	}
+
+	return bWantsWeaponArmed ? WeaponData->WeaponData.EquipSocketName : WeaponData->WeaponData.HolsterSocketName;
 }
 
 void ACharacterBase::ToggleGameplayTagPair(UAbilitySystemComponent* ASC, const FGameplayTag& TagToRemove, const FGameplayTag& TagToAdd)
@@ -327,18 +346,43 @@ void ACharacterBase::UpdateEquipmentMesh(EEquipmentSlot Slot, TSoftObjectPtr<USk
 
 	if (MeshAsset.IsNull())
 	{
+		PendingEquipmentMeshes.Remove(Slot);
 		TargetComp->SetSkeletalMesh(nullptr);
 		return;
 	}
 
-	// TODO: Convert to async load (RequestAsyncLoad) for hitch-free armor equipping in production
-	TargetComp->SetSkeletalMesh(MeshAsset.LoadSynchronous());
+	PendingEquipmentMeshes.Add(Slot, MeshAsset);
+
+	if (MeshAsset.IsPending())
+	{
+		FStreamableDelegate Delegate = FStreamableDelegate::CreateWeakLambda(this, [this, Slot, MeshAsset]()
+		{
+			if (PendingEquipmentMeshes.FindRef(Slot) != MeshAsset || !MeshAsset.IsValid())
+			{
+				return;
+			}
+
+			if (USkeletalMeshComponent* LoadedTargetComp = GetMeshComponentForSlot(Slot))
+			{
+				LoadedTargetComp->SetSkeletalMesh(MeshAsset.Get());
+			}
+		});
+
+		UAssetManager::GetStreamableManager().RequestAsyncLoad(MeshAsset.ToSoftObjectPath(), Delegate);
+		return;
+	}
+
+	if (MeshAsset.IsValid())
+	{
+		TargetComp->SetSkeletalMesh(MeshAsset.Get());
+	}
 }
 
 void ACharacterBase::ClearEquipmentMesh(EEquipmentSlot Slot)
 {
 	if (USkeletalMeshComponent* TargetComp = GetMeshComponentForSlot(Slot))
 	{
+		PendingEquipmentMeshes.Remove(Slot);
 		TargetComp->SetSkeletalMesh(nullptr);
 	}
 }

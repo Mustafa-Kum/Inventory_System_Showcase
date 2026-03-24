@@ -16,6 +16,19 @@ enum class EWeaponType : uint8
 };
 
 USTRUCT(BlueprintType)
+struct FCombatComboData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	TArray<TSoftObjectPtr<class UAnimMontage>> ComboMontages;
+
+	/** Window after the last attack where the combo resets if no input is received */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat", meta = (ClampMin = "0.0"))
+	float ComboResetDelay = 1.5f;
+};
+
+USTRUCT(BlueprintType)
 struct FWeaponData
 {
 	GENERATED_BODY()
@@ -46,6 +59,9 @@ struct FWeaponData
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats", meta = (ClampMin = "0.1"))
 	float WeaponCastSpeed = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	FCombatComboData ComboData;
 };
 
 UCLASS(BlueprintType)

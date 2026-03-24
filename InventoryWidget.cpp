@@ -38,12 +38,18 @@ void UInventoryWidget::InitializeInventoryUI(UInventoryComponent* InInventoryCom
 {
 	if (!InInventoryComp) return;
 
+	if (InventoryComp)
+	{
+		InventoryComp->OnInventoryUpdated.RemoveDynamic(this, &UInventoryWidget::RefreshInventoryGrid);
+	}
+
 	InventoryComp = InInventoryComp;
 
 	// AAA Hotfix: BuildCaches requires to run BEFORE the first refresh if AddToViewport hasn't fired NativeConstruct yet.
 	BuildCaches();
 
 	// Subscribe to the component's state changes (Observer Pattern / DIP)
+	InventoryComp->OnInventoryUpdated.RemoveDynamic(this, &UInventoryWidget::RefreshInventoryGrid);
 	InventoryComp->OnInventoryUpdated.AddDynamic(this, &UInventoryWidget::RefreshInventoryGrid);
 
 	// Initial population right after bind
@@ -52,15 +58,6 @@ void UInventoryWidget::InitializeInventoryUI(UInventoryComponent* InInventoryCom
 
 void UInventoryWidget::RefreshInventoryGrid()
 {
-	if (!InventoryGrid)
-	{
-		UE_LOG(LogInventoryUI, Warning, TEXT("InventoryGrid WrapBox missing from Widget blueprint!"));
-		return;
-	}
-
-	// AAA Clear Slate
-	InventoryGrid->ClearChildren();
-
 	PopulateSlots();
 	UpdateStatsUI();
 }
@@ -77,7 +74,8 @@ void UInventoryWidget::PopulateSlots()
 
 	// AAA Orchestrator: Separate equipment panel from backpack grid
 	InitializeEquipmentSlots();
-	PopulateBackpackGrid();
+	EnsureBackpackSlotsCreated();
+	RefreshBackpackSlots();
 }
 
 // (Structs moved to header for better template resolving)
@@ -104,39 +102,71 @@ void UInventoryWidget::InitializeEquipmentSlots()
 {
 	if (!InventoryComp) return;
 
-	// AAA Direct Assignments: Guarantees correct routing regardless of initialization timing
-	if (HelmSlot) HelmSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Helm), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Helm);
-	if (NecklaceSlot) NecklaceSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Necklace), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Necklace);
-	if (ChestSlot) ChestSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Chest), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Chest);
-	if (CloakSlot) CloakSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Cloak), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Cloak);
-	if (BeltSlot) BeltSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Belt), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Belt);
-
-	// The Main Hand gets the actually equipped weapon
-	if (MainHandSlot) MainHandSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::MainHand), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::MainHand);
-
-	if (OffHandSlot) OffHandSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::OffHand), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::OffHand);
-	if (LeftRingSlot) LeftRingSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::LeftRing), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::LeftRing);
-	if (RightRingSlot) RightRingSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::RightRing), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::RightRing);
-	if (GauntletsSlot) GauntletsSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Gauntlets), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Gauntlets);
-	if (LeggingsSlot) LeggingsSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Leggings), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Leggings);
-	if (BootsSlot) BootsSlot->InitializeSlot(InventoryComp->EquippedItems.FindRef(EEquipmentSlot::Boots), -1, InventoryComp, EItemSlotContext::Equipment, EEquipmentSlot::Boots);
+	InitializeEquipmentSlot(HelmSlot, EEquipmentSlot::Helm);
+	InitializeEquipmentSlot(NecklaceSlot, EEquipmentSlot::Necklace);
+	InitializeEquipmentSlot(ChestSlot, EEquipmentSlot::Chest);
+	InitializeEquipmentSlot(CloakSlot, EEquipmentSlot::Cloak);
+	InitializeEquipmentSlot(BeltSlot, EEquipmentSlot::Belt);
+	InitializeEquipmentSlot(MainHandSlot, EEquipmentSlot::MainHand);
+	InitializeEquipmentSlot(OffHandSlot, EEquipmentSlot::OffHand);
+	InitializeEquipmentSlot(LeftRingSlot, EEquipmentSlot::LeftRing);
+	InitializeEquipmentSlot(RightRingSlot, EEquipmentSlot::RightRing);
+	InitializeEquipmentSlot(GauntletsSlot, EEquipmentSlot::Gauntlets);
+	InitializeEquipmentSlot(LeggingsSlot, EEquipmentSlot::Leggings);
+	InitializeEquipmentSlot(BootsSlot, EEquipmentSlot::Boots);
 }
 
-void UInventoryWidget::PopulateBackpackGrid()
+void UInventoryWidget::InitializeEquipmentSlot(UItemSlotWidget* SlotWidget, EEquipmentSlot SlotType)
 {
+	if (!SlotWidget || !InventoryComp)
+	{
+		return;
+	}
+
+	SlotWidget->InitializeSlot(InventoryComp->GetEquippedItem(SlotType), -1, InventoryComp, EItemSlotContext::Equipment, SlotType);
+}
+
+void UInventoryWidget::EnsureBackpackSlotsCreated()
+{
+	if (!InventoryGrid)
+	{
+		UE_LOG(LogInventoryUI, Warning, TEXT("InventoryGrid WrapBox missing from Widget blueprint!"));
+		return;
+	}
+
+	if (BackpackSlotWidgets.Num() == TotalBackpackSlots)
+	{
+		return;
+	}
+
+	InventoryGrid->ClearChildren();
+	BackpackSlotWidgets.Empty();
+
 	for (int32 i = 0; i < TotalBackpackSlots; ++i)
 	{
-		UItemDataAsset* ItemData = InventoryComp->InventorySlots.IsValidIndex(i) ? InventoryComp->InventorySlots[i].ItemData : nullptr;
-		CreateAndAddBackpackSlot(ItemData, i);
+		CreateAndAddBackpackSlot(i);
 	}
 }
 
-void UInventoryWidget::CreateAndAddBackpackSlot(UItemDataAsset* ItemData, int32 SlotIndex)
+void UInventoryWidget::RefreshBackpackSlots()
+{
+	if (!InventoryComp) return;
+
+	for (int32 SlotIndex = 0; SlotIndex < BackpackSlotWidgets.Num(); ++SlotIndex)
+	{
+		if (UItemSlotWidget* SlotWidget = BackpackSlotWidgets[SlotIndex])
+		{
+			SlotWidget->InitializeSlot(InventoryComp->GetItemAtIndex(SlotIndex), SlotIndex, InventoryComp, EItemSlotContext::Inventory, EEquipmentSlot::None);
+		}
+	}
+}
+
+void UInventoryWidget::CreateAndAddBackpackSlot(int32 SlotIndex)
 {
 	UItemSlotWidget* NewSlot = CreateWidget<UItemSlotWidget>(GetOwningPlayer(), ItemSlotClass);
 	if (!NewSlot) return;
 
-	NewSlot->InitializeSlot(ItemData, SlotIndex, InventoryComp, EItemSlotContext::Inventory, EEquipmentSlot::None);
+	NewSlot->InitializeSlot(InventoryComp ? InventoryComp->GetItemAtIndex(SlotIndex) : nullptr, SlotIndex, InventoryComp, EItemSlotContext::Inventory, EEquipmentSlot::None);
 	
 	UWrapBoxSlot* WrapBoxSlot = InventoryGrid->AddChildToWrapBox(NewSlot);
 	if (WrapBoxSlot)
@@ -144,6 +174,8 @@ void UInventoryWidget::CreateAndAddBackpackSlot(UItemDataAsset* ItemData, int32 
 		// AAA UI: Apply user-requested padding to separate slots slightly
 		WrapBoxSlot->SetPadding(FMargin(5.0f));
 	}
+
+	BackpackSlotWidgets.Add(NewSlot);
 }
 
 // (Structs moved to header for better template resolving)

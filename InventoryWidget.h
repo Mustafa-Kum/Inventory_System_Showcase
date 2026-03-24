@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "AttributeSet.h"
+#include "DataAssets/ItemDataAsset.h"
 #include "InventoryWidget.generated.h"
 
 // Forward Declarations
@@ -163,16 +164,21 @@ private:
 	// Creation helpers (DRY: Separated equipment vs backpack logic)
 	void PopulateSlots();
 	void InitializeEquipmentSlots();
-	void PopulateBackpackGrid();
+	void InitializeEquipmentSlot(UItemSlotWidget* SlotWidget, EEquipmentSlot SlotType);
+	void EnsureBackpackSlotsCreated();
+	void RefreshBackpackSlots();
 	
 	// AAA: Loop Internal Extractor
-	void CreateAndAddBackpackSlot(class UItemDataAsset* ItemData, int32 SlotIndex);
+	void CreateAndAddBackpackSlot(int32 SlotIndex);
 	
 	// Stats UI Helper
 	void UpdateStatsUI();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInventoryComponent> InventoryComp;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UItemSlotWidget>> BackpackSlotWidgets;
 
 	// AAA Caching: Prevent memory reallocation on every refresh
 	TArray<FAttributeDisplayInfo> CachedDisplayMappings;

@@ -48,6 +48,8 @@ void UItemSlotWidget::AssignSlotData(UItemDataAsset* InItemData, int32 InIndex, 
 
 void UItemSlotWidget::ClearSlotVisuals()
 {
+	PendingIconAsset.Reset();
+
 	if (IconImage)
 	{
 		IconImage->SetBrushFromTexture(EmptySlotIcon ? EmptySlotIcon : nullptr);
@@ -80,22 +82,36 @@ void UItemSlotWidget::SetupTooltipWidget()
 {
 	if (!TooltipClass) return;
 
-	// Tooltip implementation left as is (assume it works with ItemData)
-	UItemTooltipWidget* TooltipWidget = CreateWidget<UItemTooltipWidget>(this, TooltipClass);
-	if (TooltipWidget)
+	if (!TooltipWidgetInstance)
 	{
-		TooltipWidget->SetupTooltip(ItemData);
-		SetToolTip(TooltipWidget);
+		TooltipWidgetInstance = CreateWidget<UItemTooltipWidget>(this, TooltipClass);
+	}
+
+	if (TooltipWidgetInstance)
+	{
+		TooltipWidgetInstance->SetupTooltip(ItemData);
+		SetToolTip(TooltipWidgetInstance);
 	}
 }
 
 void UItemSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& IconPtr)
 {
+	PendingIconAsset = IconPtr;
+
+	if (IconPtr.IsNull())
+	{
+		if (IconImage)
+		{
+			IconImage->SetBrushFromTexture(nullptr);
+		}
+		return;
+	}
+
 	if (IconPtr.IsPending())
 	{
 		FStreamableDelegate Delegate = FStreamableDelegate::CreateWeakLambda(this, [this, IconPtr]()
 		{
-			if (IconImage && IconPtr.IsValid())
+			if (IconImage && IconPtr.IsValid() && PendingIconAsset == IconPtr && ItemData && ItemData->ItemData.ItemIcon == IconPtr)
 			{
 				IconImage->SetBrushFromTexture(IconPtr.Get());
 			}
@@ -107,11 +123,6 @@ void UItemSlotWidget::LoadAndSetIconAsync(const TSoftObjectPtr<UTexture2D>& Icon
 	{
 		IconImage->SetBrushFromTexture(IconPtr.Get());
 	}
-}
-
-void UItemSlotWidget::OnSlotButtonClicked()
-{
-	// Reserved for future use (e.g., selection highlight)
 }
 
 FReply UItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
@@ -126,26 +137,9 @@ FReply UItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, con
 		return UWidgetBlueprintLibrary::DetectDragIfPressed(InMouseEvent, this, EKeys::LeftMouseButton).NativeReply;
 	}
 
-	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && InventoryComp)
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && CanProcessRightClick())
 	{
-		if (SlotContext == EItemSlotContext::Inventory)
-		{
-			if (ItemData->ItemData.ItemType == EItemType::Consumable)
-			{
-				InventoryComp->ConsumeItemAtIndex(SlotIndex);
-			}
-			else
-			{
-				InventoryComp->EquipItemAtIndex(SlotIndex, ItemData->ItemData.ValidEquipmentSlot);
-			}
-			return FReply::Handled();
-		}
-		else if (SlotContext == EItemSlotContext::Equipment)
-		{
-			// Right click an equipped item to unequip it
-			InventoryComp->UnequipItem(EquipmentSlot);
-			return FReply::Handled();
-		}
+		return HandleRightClickAction();
 	}
 
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
@@ -164,6 +158,7 @@ void UItemSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FP
 	DragOperation->PayloadItem = ItemData; 
 	DragOperation->SourceSlotIndex = SlotIndex;
 	DragOperation->SourceContext = SlotContext;
+	DragOperation->SourceEquipmentSlot = EquipmentSlot;
 	DragOperation->DefaultDragVisual = CreateDragVisualWidget();
 
 	OutOperation = DragOperation;
@@ -187,7 +182,7 @@ UItemSlotWidget* UItemSlotWidget::CreateDragVisualWidget()
 
 bool UItemSlotWidget::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-	return true;
+	return CanHandleDropPayload(Cast<UItemDragDropOperation>(InOperation));
 }
 
 bool UItemSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
@@ -195,9 +190,7 @@ bool UItemSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropE
 	Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
 
 	UItemDragDropOperation* Payload = Cast<UItemDragDropOperation>(InOperation);
-	if (!Payload || !InventoryComp) return false;
-
-	if (Payload->SourceContext == SlotContext && Payload->SourceSlotIndex == SlotIndex)
+	if (!CanHandleDropPayload(Payload))
 	{
 		return false;
 	}
@@ -220,13 +213,82 @@ bool UItemSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropE
 	return false;
 }
 
+bool UItemSlotWidget::CanProcessRightClick() const
+{
+	return ItemData != nullptr && InventoryComp != nullptr;
+}
+
+FReply UItemSlotWidget::HandleRightClickAction()
+{
+	if (SlotContext == EItemSlotContext::Inventory)
+	{
+		return HandleInventoryRightClickAction();
+	}
+
+	if (SlotContext == EItemSlotContext::Equipment)
+	{
+		return HandleEquipmentRightClickAction();
+	}
+
+	return FReply::Unhandled();
+}
+
+FReply UItemSlotWidget::HandleInventoryRightClickAction()
+{
+	if (ItemData->ItemData.ItemType == EItemType::Consumable)
+	{
+		return InventoryComp->ConsumeItemAtIndex(SlotIndex) ? FReply::Handled() : FReply::Unhandled();
+	}
+
+	if (ItemData->ItemData.ValidEquipmentSlot != EEquipmentSlot::None)
+	{
+		return InventoryComp->EquipItemAtIndex(SlotIndex, ItemData->ItemData.ValidEquipmentSlot) ? FReply::Handled() : FReply::Unhandled();
+	}
+
+	return FReply::Unhandled();
+}
+
+FReply UItemSlotWidget::HandleEquipmentRightClickAction()
+{
+	return InventoryComp->UnequipItem(EquipmentSlot) ? FReply::Handled() : FReply::Unhandled();
+}
+
+bool UItemSlotWidget::CanHandleDropPayload(const UItemDragDropOperation* Payload) const
+{
+	if (!Payload || !InventoryComp || IsDropFromSameSource(Payload))
+	{
+		return false;
+	}
+
+	if (SlotContext == EItemSlotContext::Equipment && Payload->SourceContext == EItemSlotContext::Inventory)
+	{
+		return Payload->PayloadItem && Payload->PayloadItem->ItemData.ValidEquipmentSlot == EquipmentSlot;
+	}
+
+	if (SlotContext == EItemSlotContext::Inventory && Payload->SourceContext == EItemSlotContext::Equipment)
+	{
+		return SlotIndex != INDEX_NONE && InventoryComp->GetItemAtIndex(SlotIndex) == nullptr;
+	}
+
+	if (SlotContext == EItemSlotContext::Inventory && Payload->SourceContext == EItemSlotContext::Inventory)
+	{
+		return SlotIndex != INDEX_NONE;
+	}
+
+	return false;
+}
+
+bool UItemSlotWidget::IsDropFromSameSource(const UItemDragDropOperation* Payload) const
+{
+	return Payload && Payload->SourceContext == SlotContext && Payload->SourceSlotIndex == SlotIndex;
+}
+
 bool UItemSlotWidget::HandleDropFromInventoryToEquipment(UItemDragDropOperation* Payload)
 {
 	// AAA Drag-Drop VALIDATION! Ensure item fits the slot!
 	if (Payload->PayloadItem && Payload->PayloadItem->ItemData.ValidEquipmentSlot == EquipmentSlot)
 	{
-		InventoryComp->EquipItemAtIndex(Payload->SourceSlotIndex, EquipmentSlot);
-		return true;
+		return InventoryComp->EquipItemAtIndex(Payload->SourceSlotIndex, EquipmentSlot);
 	}
 	else
 	{
@@ -237,13 +299,10 @@ bool UItemSlotWidget::HandleDropFromInventoryToEquipment(UItemDragDropOperation*
 
 bool UItemSlotWidget::HandleDropFromEquipmentToInventory(UItemDragDropOperation* Payload)
 {
-	InventoryComp->UnequipItemToSlot(Payload->PayloadItem->ItemData.ValidEquipmentSlot, SlotIndex);
-	return true;
+	return InventoryComp->UnequipItemToSlot(Payload->SourceEquipmentSlot, SlotIndex);
 }
 
 bool UItemSlotWidget::HandleDropBetweenInventorySlots(UItemDragDropOperation* Payload)
 {
-	InventoryComp->SetItemAtIndex(ItemData, 1, Payload->SourceSlotIndex);
-	InventoryComp->SetItemAtIndex(Payload->PayloadItem, 1, SlotIndex);
-	return true;
+	return InventoryComp->SwapInventorySlots(Payload->SourceSlotIndex, SlotIndex);
 }

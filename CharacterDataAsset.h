@@ -40,6 +40,9 @@ struct FCharacterStartingStats
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Derived")
 	float BaseMagicDamage = 10.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Vital")
+	float BaseMaxMana = 100.0f;
 };
 
 /**

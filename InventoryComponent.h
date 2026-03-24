@@ -33,25 +33,8 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:	
-	/** --- CORE DATA --- */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Inventory")
-	TObjectPtr<UItemDataAsset> DefaultStartingItem;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TArray<FInventoryItem> InventorySlots;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
-	int32 MaxInventorySlots = 20;
-
-	// AAA RPG Multi-Slot Backend
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-	TMap<EEquipmentSlot, TObjectPtr<UItemDataAsset>> EquippedItems;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-	EWeaponEquipState WeaponEquipState = EWeaponEquipState::Idle;
-
 	/** --- PUBLIC API --- */
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	UFUNCTION(BlueprintCallable, Category = "Inventory", meta = (BlueprintInternalUseOnly = "true"))
 	void SetItemAtIndex(UItemDataAsset* Item, int32 Quantity, int32 Index);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
@@ -59,19 +42,25 @@ public:
 
 	// Multi-Slot Equip logic
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void EquipItemAtIndex(int32 Index, EEquipmentSlot TargetSlot);
+	bool EquipItemAtIndex(int32 Index, EEquipmentSlot TargetSlot);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void UnequipItem(EEquipmentSlot Slot);
+	bool UnequipItem(EEquipmentSlot Slot);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void UnequipItemToSlot(EEquipmentSlot Slot, int32 TargetIndex);
+	bool UnequipItemToSlot(EEquipmentSlot Slot, int32 TargetIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void ConsumeItemAtIndex(int32 SlotIndex);
+	bool ConsumeItemAtIndex(int32 SlotIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ToggleDrawHolster();
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool SwapInventorySlots(int32 SourceIndex, int32 TargetIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool PrepareWeaponForCombat();
 
 	/** --- QUERY API --- */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
@@ -80,7 +69,20 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
 	[[nodiscard]] bool HasItemEquippedAtSlot(EEquipmentSlot Slot) const;
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
+	[[nodiscard]] UItemDataAsset* GetItemAtIndex(int32 Index) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
+	[[nodiscard]] int32 GetItemQuantityAtIndex(int32 Index) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
+	[[nodiscard]] UItemDataAsset* GetEquippedItem(EEquipmentSlot Slot) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Inventory")
+	[[nodiscard]] int32 GetInventorySlotCount() const { return InventorySlots.Num(); }
+
 	[[nodiscard]] int32 FindEmptySlotIndex() const;
+	[[nodiscard]] int32 FindFirstEquippableItemIndex(EEquipmentSlot TargetSlot) const;
 
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnInventoryUpdated OnInventoryUpdated;
@@ -94,12 +96,15 @@ protected:
 	
 	[[nodiscard]] bool CanEquipItem(int32 Index, EEquipmentSlot TargetSlot) const;
 	[[nodiscard]] bool CanPerformWeaponAction() const;
+	[[nodiscard]] bool HasValidInventoryItemAtIndex(int32 Index) const;
+	[[nodiscard]] bool EnsureCombatWeaponEquipped();
+	[[nodiscard]] bool EnsureCombatWeaponDrawn();
 
-	void Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot);
-	void ProcessEquipBackend(int32 Index, EEquipmentSlot TargetSlot, UItemDataAsset* ItemToEquip);
-	void HandleTwoHandedEquipConstraints(UItemDataAsset* ItemToEquip, EEquipmentSlot TargetSlot);
+	bool Internal_ProcessEquipFlow(int32 Index, EEquipmentSlot TargetSlot);
+	bool ProcessEquipBackend(int32 Index, EEquipmentSlot TargetSlot, UItemDataAsset* ItemToEquip);
+	bool HandleTwoHandedEquipConstraints(UItemDataAsset* ItemToEquip, EEquipmentSlot TargetSlot);
 	void ExecuteEquipVisuals(EEquipmentSlot TargetSlot);
-	void Internal_ProcessUnequipFlow(EEquipmentSlot Slot, int32 TargetIndex);
+	bool Internal_ProcessUnequipFlow(EEquipmentSlot Slot, int32 TargetIndex);
 	void Internal_SwapEquippedWithInventory(int32 Index, EEquipmentSlot TargetSlot);
 	void Internal_HandleWeaponTransition(UWeaponDataAsset* WeaponToTransition, bool bIsEquipping);
 	
@@ -119,7 +124,28 @@ protected:
 	void FinalizeEquipAction();
 	void FinalizeUnequipAction();
 
+	void SetItemAtIndexInternal(UItemDataAsset* Item, int32 Quantity, int32 Index, bool bBroadcast);
+	void BroadcastInventoryUpdated();
+	[[nodiscard]] int32 ResolveUnequipTargetIndex(UItemDataAsset* ItemToUnequip, int32 PreferredIndex) const;
+	void NormalizeSlotWrite(UItemDataAsset*& Item, int32& Quantity) const;
+
 private:
+	/** --- CORE DATA --- */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UItemDataAsset> DefaultStartingItem;
+
+	UPROPERTY(VisibleAnywhere, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+	TArray<FInventoryItem> InventorySlots;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+	int32 MaxInventorySlots = 20;
+
+	UPROPERTY(VisibleAnywhere, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+	TMap<EEquipmentSlot, TObjectPtr<UItemDataAsset>> EquippedItems;
+
+	UPROPERTY(VisibleAnywhere, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+	EWeaponEquipState WeaponEquipState = EWeaponEquipState::Idle;
+
 	UPROPERTY(Transient)
 	TObjectPtr<ACharacterBase> OwnerCharacter;
 
