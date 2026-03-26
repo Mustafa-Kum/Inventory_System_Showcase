@@ -1,4 +1,4 @@
-# Building My RPG — Inventory & Equipment System Showcase (Unreal Engine 5 / GAS)
+# Building My RPG Part 2 — Inventory & Equipment System Showcase (Unreal Engine 5 / GAS)
 
 ![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.0%2B-blue?logo=unrealengine&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-Gameplay_Programming-blue)
