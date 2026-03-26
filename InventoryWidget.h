@@ -9,6 +9,8 @@
 class UWrapBox;
 class UItemSlotWidget;
 class UInventoryComponent;
+class UAbilitySystemComponent;
+struct FOnAttributeChangeData;
 
 /**
  * AAA: Format specifier for stat display — replaces brittle string-matching logic
@@ -173,15 +175,23 @@ private:
 	
 	// Stats UI Helper
 	void UpdateStatsUI();
+	void BindAttributeDelegates();
+	void UnbindAttributeDelegates();
+	void HandleObservedAttributeChanged(const FOnAttributeChangeData& ChangeData);
+	[[nodiscard]] UAbilitySystemComponent* ResolveObservedAbilitySystemComponent() const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInventoryComponent> InventoryComp;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAbilitySystemComponent> ObservedAbilitySystemComponent;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UItemSlotWidget>> BackpackSlotWidgets;
 
 	// AAA Caching: Prevent memory reallocation on every refresh
 	TArray<FAttributeDisplayInfo> CachedDisplayMappings;
+	TArray<FDelegateHandle> AttributeChangeDelegateHandles;
 
 	// AAA: Called once to build the layout caches
 	void BuildCaches();

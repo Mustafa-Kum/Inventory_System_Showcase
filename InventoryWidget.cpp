@@ -21,6 +21,7 @@ void UInventoryWidget::NativeConstruct()
 
 	// AAA: Build caches once when the UI is constructed
 	BuildCaches();
+	BindAttributeDelegates();
 }
 
 void UInventoryWidget::NativeDestruct()
@@ -30,6 +31,8 @@ void UInventoryWidget::NativeDestruct()
 	{
 		InventoryComp->OnInventoryUpdated.RemoveDynamic(this, &UInventoryWidget::RefreshInventoryGrid);
 	}
+
+	UnbindAttributeDelegates();
 
 	Super::NativeDestruct();
 }
@@ -51,6 +54,7 @@ void UInventoryWidget::InitializeInventoryUI(UInventoryComponent* InInventoryCom
 	// Subscribe to the component's state changes (Observer Pattern / DIP)
 	InventoryComp->OnInventoryUpdated.RemoveDynamic(this, &UInventoryWidget::RefreshInventoryGrid);
 	InventoryComp->OnInventoryUpdated.AddDynamic(this, &UInventoryWidget::RefreshInventoryGrid);
+	BindAttributeDelegates();
 
 	// Initial population right after bind
 	RefreshInventoryGrid();
@@ -96,6 +100,57 @@ void UInventoryWidget::BuildCaches()
 	CachedDisplayMappings.Add(FAttributeDisplayInfo(MagicDamageText.Get(),    UCharacterAttributeSet::GetSpellDamageAttribute(),          TEXT("Spell Dmg"),EStatDisplayFormat::Integer));
 	CachedDisplayMappings.Add(FAttributeDisplayInfo(CastSpeedText.Get(),      UCharacterAttributeSet::GetCastSpeedAttribute(),            TEXT("Cast Speed"),EStatDisplayFormat::Decimal));
 	CachedDisplayMappings.Add(FAttributeDisplayInfo(ArmorText.Get(),          UCharacterAttributeSet::GetArmorAttribute(),               TEXT("Armor"),    EStatDisplayFormat::Integer));
+}
+
+void UInventoryWidget::BindAttributeDelegates()
+{
+	BuildCaches();
+	UnbindAttributeDelegates();
+
+	ObservedAbilitySystemComponent = ResolveObservedAbilitySystemComponent();
+	if (!ObservedAbilitySystemComponent)
+	{
+		return;
+	}
+
+	AttributeChangeDelegateHandles.Reserve(CachedDisplayMappings.Num());
+	for (const FAttributeDisplayInfo& Mapping : CachedDisplayMappings)
+	{
+		AttributeChangeDelegateHandles.Add(
+			ObservedAbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(Mapping.Attribute)
+				.AddUObject(this, &UInventoryWidget::HandleObservedAttributeChanged));
+	}
+}
+
+void UInventoryWidget::UnbindAttributeDelegates()
+{
+	if (ObservedAbilitySystemComponent)
+	{
+		const int32 BoundHandleCount = FMath::Min(AttributeChangeDelegateHandles.Num(), CachedDisplayMappings.Num());
+		for (int32 Index = 0; Index < BoundHandleCount; ++Index)
+		{
+			if (AttributeChangeDelegateHandles[Index].IsValid())
+			{
+				ObservedAbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(CachedDisplayMappings[Index].Attribute)
+					.Remove(AttributeChangeDelegateHandles[Index]);
+			}
+		}
+	}
+
+	AttributeChangeDelegateHandles.Reset();
+	ObservedAbilitySystemComponent = nullptr;
+}
+
+void UInventoryWidget::HandleObservedAttributeChanged(const FOnAttributeChangeData&)
+{
+	UpdateStatsUI();
+}
+
+UAbilitySystemComponent* UInventoryWidget::ResolveObservedAbilitySystemComponent() const
+{
+	APawn* OwningPawn = GetOwningPlayerPawn();
+	IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OwningPawn);
+	return ASCInterface ? ASCInterface->GetAbilitySystemComponent() : nullptr;
 }
 
 void UInventoryWidget::InitializeEquipmentSlots()
@@ -182,11 +237,17 @@ void UInventoryWidget::CreateAndAddBackpackSlot(int32 SlotIndex)
 
 void UInventoryWidget::UpdateStatsUI()
 {
-	APawn* OwningPawn = GetOwningPlayerPawn();
-	IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OwningPawn);
-	if (!ASCInterface || !ASCInterface->GetAbilitySystemComponent()) return;
+	UAbilitySystemComponent* ASC = ObservedAbilitySystemComponent.Get();
+	if (!ASC)
+	{
+		ASC = ResolveObservedAbilitySystemComponent();
+		if (!ASC)
+		{
+			return;
+		}
 
-	UAbilitySystemComponent* ASC = ASCInterface->GetAbilitySystemComponent();
+		ObservedAbilitySystemComponent = ASC;
+	}
 
 	for (const FAttributeDisplayInfo& Mapping : CachedDisplayMappings)
 	{

@@ -254,12 +254,15 @@ void UInventoryComponent::ToggleDrawHolster()
 
 void UInventoryComponent::Internal_HandleWeaponTransition(UWeaponDataAsset* WeaponToTransition, bool bIsEquipping)
 {
-	SetEquipState(bIsEquipping ? EWeaponEquipState::Equipping : EWeaponEquipState::Unequipping);
+	const EWeaponEquipState RequestedState = bIsEquipping ? EWeaponEquipState::Equipping : EWeaponEquipState::Unequipping;
+	SetEquipState(RequestedState);
+	PendingWeaponTransitionData = WeaponToTransition;
+	PendingWeaponTransitionState = RequestedState;
+	++PendingWeaponTransitionRequestId;
 	
 	if (bIsEquipping)
 	{
 		OwnerCharacter->SetPendingWeapon(WeaponToTransition);
-		PendingEquipWeaponData = WeaponToTransition;
 	}
 
 	ExecuteVisualTransition(WeaponToTransition, bIsEquipping);
@@ -343,14 +346,14 @@ void UInventoryComponent::ExecuteInstantClear()
 	BroadcastInventoryUpdated();
 }
 
-void UInventoryComponent::OnEquipMontageLoaded(UWeaponDataAsset* WeaponToEquip)
+void UInventoryComponent::OnEquipMontageLoaded(UWeaponDataAsset* WeaponToEquip, int32 RequestId)
 {
-	PlayWeaponMontage(WeaponToEquip, PendingEquipWeaponData);
+	PlayWeaponMontage(WeaponToEquip, EWeaponEquipState::Equipping, RequestId);
 }
 
-void UInventoryComponent::OnUnequipMontageLoaded(UWeaponDataAsset* WeaponToUnequip)
+void UInventoryComponent::OnUnequipMontageLoaded(UWeaponDataAsset* WeaponToUnequip, int32 RequestId)
 {
-	PlayWeaponMontage(WeaponToUnequip, WeaponToUnequip);
+	PlayWeaponMontage(WeaponToUnequip, EWeaponEquipState::Unequipping, RequestId);
 }
 
 void UInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -359,6 +362,7 @@ void UInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		OwnerCharacter->OnWeaponActionFinished.RemoveAll(this);
 	}
+	ClearPendingWeaponTransition();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -366,18 +370,13 @@ void UInventoryComponent::OnWeaponActionCompleted()
 {
 	const EWeaponEquipState PreviousState = WeaponEquipState;
 
-	if (PreviousState == EWeaponEquipState::Equipping) FinalizeEquipAction();
-	else if (PreviousState == EWeaponEquipState::Unequipping) FinalizeUnequipAction();
+	if (PreviousState == EWeaponEquipState::Unequipping)
+	{
+		FinalizeUnequipAction();
+	}
 
 	SetEquipState(EWeaponEquipState::Idle);
-}
-
-void UInventoryComponent::FinalizeEquipAction()
-{
-	if (PendingEquipWeaponData)
-	{
-		PendingEquipWeaponData = nullptr;
-	}
+	ClearPendingWeaponTransition();
 }
 
 void UInventoryComponent::FinalizeUnequipAction()
@@ -396,17 +395,29 @@ void UInventoryComponent::SetEquipState(EWeaponEquipState NewState)
 	WeaponEquipState = NewState;
 }
 
-void UInventoryComponent::PlayWeaponMontage(UWeaponDataAsset* LoadedData, UWeaponDataAsset* TargetData)
+void UInventoryComponent::PlayWeaponMontage(UWeaponDataAsset* WeaponData, EWeaponEquipState ExpectedState, int32 RequestId)
 {
-	if (!OwnerCharacter || LoadedData != TargetData) return;
-
-	const TSoftObjectPtr<UAnimMontage> Montage = (WeaponEquipState == EWeaponEquipState::Equipping) 
-		? LoadedData->WeaponData.EquipMontage 
-		: LoadedData->WeaponData.UnequipMontage;
-
-	if (Montage.IsValid())
+	if (!IsWeaponTransitionRequestCurrent(WeaponData, ExpectedState, RequestId))
 	{
-		OwnerCharacter->PlayAnimMontage(Montage.Get());
+		return;
+	}
+
+	const TSoftObjectPtr<UAnimMontage>& Montage = (ExpectedState == EWeaponEquipState::Equipping)
+		? WeaponData->WeaponData.EquipMontage
+		: WeaponData->WeaponData.UnequipMontage;
+
+	if (!OwnerCharacter || !Montage.IsValid())
+	{
+		SnapWeaponWithoutAnimation(ExpectedState == EWeaponEquipState::Equipping);
+		return;
+	}
+
+	if (OwnerCharacter->PlayAnimMontage(Montage.Get()) <= 0.0f)
+	{
+		UE_LOG(LogInventory, Warning, TEXT("Failed to play %s montage for weapon %s. Falling back to notify-free transition."),
+			ExpectedState == EWeaponEquipState::Equipping ? TEXT("equip") : TEXT("unequip"),
+			*GetNameSafe(WeaponData));
+		SnapWeaponWithoutAnimation(ExpectedState == EWeaponEquipState::Equipping);
 	}
 }
 
@@ -491,16 +502,18 @@ void UInventoryComponent::ProcessMontageLoad(UWeaponDataAsset* WeaponData, const
 
 void UInventoryComponent::HandlePendingMontage(UWeaponDataAsset* WeaponData, const TSoftObjectPtr<UAnimMontage>& MontageToLoad, bool bIsEquipping)
 {
+	const int32 RequestId = PendingWeaponTransitionRequestId;
 	FStreamableDelegate Delegate = bIsEquipping 
-		? FStreamableDelegate::CreateUObject(this, &UInventoryComponent::OnEquipMontageLoaded, WeaponData)
-		: FStreamableDelegate::CreateUObject(this, &UInventoryComponent::OnUnequipMontageLoaded, WeaponData);
+		? FStreamableDelegate::CreateUObject(this, &UInventoryComponent::OnEquipMontageLoaded, WeaponData, RequestId)
+		: FStreamableDelegate::CreateUObject(this, &UInventoryComponent::OnUnequipMontageLoaded, WeaponData, RequestId);
 		
 	UAssetManager::GetStreamableManager().RequestAsyncLoad(MontageToLoad.ToSoftObjectPath(), Delegate);
 }
 
 void UInventoryComponent::HandleValidMontage(UWeaponDataAsset* WeaponData, bool bIsEquipping)
 {
-	bIsEquipping ? OnEquipMontageLoaded(WeaponData) : OnUnequipMontageLoaded(WeaponData);
+	const int32 RequestId = PendingWeaponTransitionRequestId;
+	bIsEquipping ? OnEquipMontageLoaded(WeaponData, RequestId) : OnUnequipMontageLoaded(WeaponData, RequestId);
 }
 
 void UInventoryComponent::HandleMissingMontage(bool bIsEquipping)
@@ -513,6 +526,22 @@ void UInventoryComponent::SnapWeaponWithoutAnimation(bool bIsEquipping)
 	if (!OwnerCharacter) return;
 
 	bIsEquipping ? OwnerCharacter->OnWeaponEquipNotify() : OwnerCharacter->OnWeaponUnequipNotify();
+}
+
+bool UInventoryComponent::IsWeaponTransitionRequestCurrent(UWeaponDataAsset* WeaponData, EWeaponEquipState ExpectedState, int32 RequestId) const
+{
+	return OwnerCharacter
+		&& WeaponData
+		&& WeaponEquipState == ExpectedState
+		&& PendingWeaponTransitionState == ExpectedState
+		&& PendingWeaponTransitionData == WeaponData
+		&& PendingWeaponTransitionRequestId == RequestId;
+}
+
+void UInventoryComponent::ClearPendingWeaponTransition()
+{
+	PendingWeaponTransitionData = nullptr;
+	PendingWeaponTransitionState = EWeaponEquipState::Idle;
 }
 
 void UInventoryComponent::SetItemAtIndexInternal(UItemDataAsset* Item, int32 Quantity, int32 Index, bool bBroadcast)

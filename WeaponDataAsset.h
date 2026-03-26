@@ -4,6 +4,8 @@
 #include "DataAssets/ItemDataAsset.h"
 #include "WeaponDataAsset.generated.h"
 
+class UCameraShakeBase;
+
 UENUM(BlueprintType)
 enum class EWeaponType : uint8
 {
@@ -62,6 +64,21 @@ struct FWeaponData
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
 	FCombatComboData ComboData;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Hit Stop")
+	bool bEnableHitStop = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Hit Stop", meta = (ClampMin = "0.0"))
+	float HitStopDuration = 0.05f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Hit Stop", meta = (ClampMin = "0.01", ClampMax = "1.0"))
+	float HitStopTimeDilation = 0.05f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Hit Feedback")
+	TSubclassOf<UCameraShakeBase> HitCameraShakeClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Hit Feedback", meta = (ClampMin = "0.0"))
+	float HitCameraShakeScale = 1.0f;
 };
 
 UCLASS(BlueprintType)

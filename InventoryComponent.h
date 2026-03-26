@@ -88,8 +88,8 @@ public:
 	FOnInventoryUpdated OnInventoryUpdated;
 
 protected:
-	virtual void OnEquipMontageLoaded(class UWeaponDataAsset* WeaponToEquip);
-	virtual void OnUnequipMontageLoaded(class UWeaponDataAsset* WeaponToUnequip);
+	virtual void OnEquipMontageLoaded(class UWeaponDataAsset* WeaponToEquip, int32 RequestId);
+	virtual void OnUnequipMontageLoaded(class UWeaponDataAsset* WeaponToUnequip, int32 RequestId);
 
 	void OnWeaponActionCompleted();
 	void SetEquipState(EWeaponEquipState NewState);
@@ -113,15 +113,16 @@ protected:
 
 	void ExecuteVisualTransition(UWeaponDataAsset* WeaponData, bool bIsEquipping);
 	void ExecuteInstantClear();
-	void PlayWeaponMontage(UWeaponDataAsset* LoadedData, UWeaponDataAsset* TargetData);
+	void PlayWeaponMontage(UWeaponDataAsset* WeaponData, EWeaponEquipState ExpectedState, int32 RequestId);
 
 	void ProcessMontageLoad(UWeaponDataAsset* WeaponData, const TSoftObjectPtr<UAnimMontage>& MontageToLoad, bool bIsEquipping);
 	void HandlePendingMontage(UWeaponDataAsset* WeaponData, const TSoftObjectPtr<UAnimMontage>& MontageToLoad, bool bIsEquipping);
 	void HandleValidMontage(UWeaponDataAsset* WeaponData, bool bIsEquipping);
 	void HandleMissingMontage(bool bIsEquipping);
 	void SnapWeaponWithoutAnimation(bool bIsEquip);
+	[[nodiscard]] bool IsWeaponTransitionRequestCurrent(UWeaponDataAsset* WeaponData, EWeaponEquipState ExpectedState, int32 RequestId) const;
+	void ClearPendingWeaponTransition();
 
-	void FinalizeEquipAction();
 	void FinalizeUnequipAction();
 
 	void SetItemAtIndexInternal(UItemDataAsset* Item, int32 Quantity, int32 Index, bool bBroadcast);
@@ -150,5 +151,8 @@ private:
 	TObjectPtr<ACharacterBase> OwnerCharacter;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UWeaponDataAsset> PendingEquipWeaponData;
+	TObjectPtr<UWeaponDataAsset> PendingWeaponTransitionData;
+
+	EWeaponEquipState PendingWeaponTransitionState = EWeaponEquipState::Idle;
+	int32 PendingWeaponTransitionRequestId = 0;
 };

@@ -71,7 +71,7 @@ struct FItemData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item Info")
 	TSoftObjectPtr<class UTexture2D> ItemIcon;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "ItemType == EItemType::Armor", EditConditionHides))
 	TSoftObjectPtr<class USkeletalMesh> EquipmentMesh;
 
 	// AAA GAS Integration: This effect dynamically applies all complex percentages or stat modifications.
