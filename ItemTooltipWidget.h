@@ -72,7 +72,7 @@ private:
 	void UpdateEconomy(UItemDataAsset* ItemData);
 
 	// Helper to add a stat row dynamically
-	void AddStatRow(const FString& Prefix, float Value, const FSlateColor& Color, const FString& Suffix);
+	void AddStatRow(const FString& DisplayText, const FSlateColor& Color);
 	
 	// --- AAA Pure Formatters (SOLID/DRY) ---
 	[[nodiscard]] FSlateColor GetColorForRarity(EItemRarity Rarity) const;

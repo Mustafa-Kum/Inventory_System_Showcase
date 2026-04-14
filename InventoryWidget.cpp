@@ -90,16 +90,24 @@ void UInventoryWidget::BuildCaches()
 
 	// Cache Stat Mappings
 	CachedDisplayMappings.Empty();
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(StrengthText.Get(),       UCharacterAttributeSet::GetStrengthAttribute(),             TEXT("Strength"), EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(AgilityText.Get(),        UCharacterAttributeSet::GetAgilityAttribute(),              TEXT("Agility"),  EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(IntellectText.Get(),      UCharacterAttributeSet::GetIntellectAttribute(),            TEXT("Intellect"),EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(StaminaText.Get(),        UCharacterAttributeSet::GetStaminaAttribute(),              TEXT("Stamina"),  EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(CriticalStrikeText.Get(), UCharacterAttributeSet::GetCriticalStrikeChanceAttribute(), TEXT("Crit"),     EStatDisplayFormat::Percentage));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(MovementSpeedText.Get(),  UCharacterAttributeSet::GetMovementSpeedAttribute(),        TEXT("Speed"),    EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(BaseDamageText.Get(),     UCharacterAttributeSet::GetAttackDamageAttribute(),         TEXT("Damage"),   EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(MagicDamageText.Get(),    UCharacterAttributeSet::GetSpellDamageAttribute(),          TEXT("Spell Dmg"),EStatDisplayFormat::Integer));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(CastSpeedText.Get(),      UCharacterAttributeSet::GetCastSpeedAttribute(),            TEXT("Cast Speed"),EStatDisplayFormat::Decimal));
-	CachedDisplayMappings.Add(FAttributeDisplayInfo(ArmorText.Get(),          UCharacterAttributeSet::GetArmorAttribute(),               TEXT("Armor"),    EStatDisplayFormat::Integer));
+	auto AddDisplayMapping = [this](UTextBlock* TargetText, FGameplayAttribute Attribute, const TCHAR* Label, EStatDisplayFormat Format)
+	{
+		if (TargetText)
+		{
+			CachedDisplayMappings.Add(FAttributeDisplayInfo(TargetText, Attribute, Label, Format));
+		}
+	};
+
+	AddDisplayMapping(StrengthText.Get(),       UCharacterAttributeSet::GetStrengthAttribute(),             TEXT("Strength"),   EStatDisplayFormat::Integer);
+	AddDisplayMapping(AgilityText.Get(),        UCharacterAttributeSet::GetAgilityAttribute(),              TEXT("Agility"),    EStatDisplayFormat::Integer);
+	AddDisplayMapping(IntellectText.Get(),      UCharacterAttributeSet::GetIntellectAttribute(),            TEXT("Intellect"),  EStatDisplayFormat::Integer);
+	AddDisplayMapping(StaminaText.Get(),        UCharacterAttributeSet::GetStaminaAttribute(),              TEXT("Stamina"),    EStatDisplayFormat::Integer);
+	AddDisplayMapping(CriticalStrikeChanceText.Get(), UCharacterAttributeSet::GetCriticalStrikeChanceAttribute(), TEXT("Crit"),       EStatDisplayFormat::Percentage);
+	AddDisplayMapping(MovementSpeedText.Get(),  UCharacterAttributeSet::GetMovementSpeedAttribute(),        TEXT("Speed"),      EStatDisplayFormat::Integer);
+	AddDisplayMapping(AttackDamageText.Get(),   UCharacterAttributeSet::GetAttackDamageAttribute(),         TEXT("Attack Damage"), EStatDisplayFormat::Integer);
+	AddDisplayMapping(SpellDamageText.Get(),    UCharacterAttributeSet::GetSpellDamageAttribute(),          TEXT("Spell Damage"),  EStatDisplayFormat::Integer);
+	AddDisplayMapping(CastSpeedText.Get(),      UCharacterAttributeSet::GetCastSpeedAttribute(),            TEXT("Cast Speed"), EStatDisplayFormat::Percentage);
+	AddDisplayMapping(ArmorText.Get(),          UCharacterAttributeSet::GetArmorAttribute(),                TEXT("Armor"),      EStatDisplayFormat::Integer);
 }
 
 void UInventoryWidget::BindAttributeDelegates()
@@ -148,9 +156,23 @@ void UInventoryWidget::HandleObservedAttributeChanged(const FOnAttributeChangeDa
 
 UAbilitySystemComponent* UInventoryWidget::ResolveObservedAbilitySystemComponent() const
 {
-	APawn* OwningPawn = GetOwningPlayerPawn();
-	IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OwningPawn);
-	return ASCInterface ? ASCInterface->GetAbilitySystemComponent() : nullptr;
+	if (InventoryComp)
+	{
+		if (IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(InventoryComp->GetOwner()))
+		{
+			return ASCInterface->GetAbilitySystemComponent();
+		}
+	}
+
+	if (APawn* OwningPawn = GetOwningPlayerPawn())
+	{
+		if (IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OwningPawn))
+		{
+			return ASCInterface->GetAbilitySystemComponent();
+		}
+	}
+
+	return nullptr;
 }
 
 void UInventoryWidget::InitializeEquipmentSlots()
@@ -189,17 +211,31 @@ void UInventoryWidget::EnsureBackpackSlotsCreated()
 		return;
 	}
 
-	if (BackpackSlotWidgets.Num() == TotalBackpackSlots)
+	if (!InventoryComp)
+	{
+		return;
+	}
+
+	const int32 DesiredSlotCount = InventoryComp->GetInventorySlotCount();
+	if (DesiredSlotCount <= 0)
+	{
+		InventoryGrid->ClearChildren();
+		BackpackSlotWidgets.Reset();
+		return;
+	}
+
+	if (BackpackSlotWidgets.Num() == DesiredSlotCount)
 	{
 		return;
 	}
 
 	InventoryGrid->ClearChildren();
-	BackpackSlotWidgets.Empty();
+	BackpackSlotWidgets.Reset();
+	BackpackSlotWidgets.Reserve(DesiredSlotCount);
 
-	for (int32 i = 0; i < TotalBackpackSlots; ++i)
+	for (int32 SlotIndex = 0; SlotIndex < DesiredSlotCount; ++SlotIndex)
 	{
-		CreateAndAddBackpackSlot(i);
+		CreateAndAddBackpackSlot(SlotIndex);
 	}
 }
 
@@ -259,6 +295,16 @@ void UInventoryWidget::UpdateStatsUI()
 			TextBlock->SetText(FText::FromString(FinalString));
 		}
 	}
+
+	UE_LOG(
+		LogInventoryUI,
+		Log,
+		TEXT("UpdateStatsUI -> AttackDamage=%.2f SpellDamage=%.2f Strength=%.2f CastSpeed=%.2f Crit=%.2f"),
+		ASC->GetNumericAttribute(UCharacterAttributeSet::GetAttackDamageAttribute()),
+		ASC->GetNumericAttribute(UCharacterAttributeSet::GetSpellDamageAttribute()),
+		ASC->GetNumericAttribute(UCharacterAttributeSet::GetStrengthAttribute()),
+		ASC->GetNumericAttribute(UCharacterAttributeSet::GetCastSpeedAttribute()),
+		ASC->GetNumericAttribute(UCharacterAttributeSet::GetCriticalStrikeChanceAttribute()));
 }
 
 FString UInventoryWidget::FormatStatValue(float Value, const FString& Label, EStatDisplayFormat Format) const

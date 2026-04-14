@@ -1,6 +1,7 @@
 #include "UI/ItemTooltipWidget.h"
 #include "DataAssets/ItemDataAsset.h"
 #include "DataAssets/WeaponDataAsset.h"
+#include "Abilities/AttributeSets/CharacterAttributeSet.h"
 #include "UI/StatRowWidget.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -9,6 +10,59 @@
 #include "Engine/Font.h"
 #include "GameplayEffect.h"
 #include "AttributeSet.h"
+
+namespace
+{
+	bool TryGetStaticModifierMagnitude(const UItemDataAsset* ItemData, const FGameplayAttribute& Attribute, float& OutMagnitude)
+	{
+		if (!ItemData || !ItemData->ItemData.EquippedStatEffect)
+		{
+			return false;
+		}
+
+		const UGameplayEffect* GameplayEffect = ItemData->ItemData.EquippedStatEffect.GetDefaultObject();
+		if (!GameplayEffect)
+		{
+			return false;
+		}
+
+		for (const FGameplayModifierInfo& ModifierInfo : GameplayEffect->Modifiers)
+		{
+			if (ModifierInfo.Attribute != Attribute)
+			{
+				continue;
+			}
+
+			if (ModifierInfo.ModifierMagnitude.GetStaticMagnitudeIfPossible(1.0f, OutMagnitude))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool ShouldUseEffectBackedWeaponValue(const UItemDataAsset* ItemData, const FGameplayAttribute& Attribute, float& OutValue)
+	{
+		float EffectMagnitude = OutValue;
+		if (!TryGetStaticModifierMagnitude(ItemData, Attribute, EffectMagnitude))
+		{
+			return false;
+		}
+
+		OutValue = EffectMagnitude;
+		return true;
+	}
+
+	bool ShouldHideModifierFromBonusRows(const UItemDataAsset* ItemData, const FGameplayAttribute& Attribute)
+	{
+		return Cast<const UWeaponDataAsset>(ItemData)
+			&& (Attribute == UCharacterAttributeSet::GetAttackDamageAttribute()
+				|| Attribute == UCharacterAttributeSet::GetCastSpeedAttribute());
+	}
+
+}
+
 UItemTooltipWidget::UItemTooltipWidget(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	// AAA: Load default engine font so the Inspector doesn't show 'None'
@@ -66,15 +120,20 @@ void UItemTooltipWidget::UpdateBaseStats(UItemDataAsset* ItemData)
 {
 	if (UWeaponDataAsset* WeaponData = Cast<UWeaponDataAsset>(ItemData))
 	{
+		float DisplayAttackDamage = WeaponData->WeaponData.BaseDamage;
+		float DisplayCastSpeed = WeaponData->WeaponData.WeaponCastSpeed;
+		ShouldUseEffectBackedWeaponValue(ItemData, UCharacterAttributeSet::GetAttackDamageAttribute(), DisplayAttackDamage);
+		ShouldUseEffectBackedWeaponValue(ItemData, UCharacterAttributeSet::GetCastSpeedAttribute(), DisplayCastSpeed);
+
 		if (BaseDamageText)
 		{
-			BaseDamageText->SetText(FText::Format(NSLOCTEXT("Tooltip", "DamageFmt", "{0} Damage"), FText::AsNumber(FMath::RoundToInt(WeaponData->WeaponData.BaseDamage))));
+			BaseDamageText->SetText(FText::Format(NSLOCTEXT("Tooltip", "DamageFmt", "{0} Attack Damage"), FText::AsNumber(FMath::RoundToInt(DisplayAttackDamage))));
 			BaseDamageText->SetVisibility(ESlateVisibility::Visible);
 		}
 
 		if (AttackSpeedText)
 		{
-			AttackSpeedText->SetText(FText::Format(NSLOCTEXT("Tooltip", "SpeedFmt", "Speed {0}"), FText::AsNumber(WeaponData->WeaponData.WeaponCastSpeed)));
+			AttackSpeedText->SetText(FText::Format(NSLOCTEXT("Tooltip", "CastSpeedFmt", "Cast Speed +{0}%"), FText::AsNumber(FMath::RoundToInt(DisplayCastSpeed))));
 			AttackSpeedText->SetVisibility(ESlateVisibility::Visible);
 		}
 	}
@@ -105,12 +164,20 @@ void UItemTooltipWidget::UpdateBonusStats(UItemDataAsset* ItemData)
 			if (ModInfo.ModifierMagnitude.GetStaticMagnitudeIfPossible(1.0f, Magnitude))
 			{
 				if (Magnitude == 0.0f) continue;
-				
-				FString AttributeName = ModInfo.Attribute.GetName();
-				FString Prefix = Magnitude > 0.0f ? TEXT("+") : TEXT("");
+
+				if (ShouldHideModifierFromBonusRows(ItemData, ModInfo.Attribute))
+				{
+					continue;
+				}
+
+				const FString AttributeName = UCharacterAttributeSet::GetFriendlyAttributeLabel(ModInfo.Attribute);
+				const FString Prefix = Magnitude > 0.0f ? TEXT("+") : TEXT("");
+				const FString ValueText = UCharacterAttributeSet::IsPercentageDisplayAttribute(ModInfo.Attribute)
+					? FString::Printf(TEXT("%s%d%% %s"), *Prefix, FMath::RoundToInt(Magnitude), *AttributeName)
+					: FString::Printf(TEXT("%s%d %s"), *Prefix, FMath::RoundToInt(Magnitude), *AttributeName);
 				FSlateColor Color = Magnitude > 0.0f ? GreenColor : RedColor;
-				
-				AddStatRow(Prefix, Magnitude, Color, FString::Printf(TEXT(" %s"), *AttributeName));
+
+				AddStatRow(ValueText, Color);
 			}
 		}
 	}
@@ -171,15 +238,14 @@ FString UItemTooltipWidget::GetStringForItemType(EItemType Type) const
 	}
 }
 
-void UItemTooltipWidget::AddStatRow(const FString& Prefix, float Value, const FSlateColor& Color, const FString& Suffix)
+void UItemTooltipWidget::AddStatRow(const FString& DisplayText, const FSlateColor& Color)
 {
 	if (!BonusStatsBox || !StatRowClass) return;
 
 	UStatRowWidget* NewRow = CreateWidget<UStatRowWidget>(this, StatRowClass);
 	if (NewRow)
 	{
-		FString StatString = FString::Printf(TEXT("%s%d%s"), *Prefix, FMath::RoundToInt(Value), *Suffix);
-		NewRow->InitStatText(FText::FromString(StatString), Color, BonusStatFont);
+		NewRow->InitStatText(FText::FromString(DisplayText), Color, BonusStatFont);
 		
 		UVerticalBoxSlot* BoxSlot = BonusStatsBox->AddChildToVerticalBox(NewRow);
 		if (BoxSlot)

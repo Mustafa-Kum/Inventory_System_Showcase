@@ -7,7 +7,7 @@
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
-#include "ItemDragDropOperation.h"
+#include "UI/ItemDragDropOperation.h"
 #include "UI/ItemTooltipWidget.h"
 
 // Custom Log Category (AAA Standard)
@@ -173,7 +173,18 @@ UItemSlotWidget* UItemSlotWidget::CreateDragVisualWidget()
 	
 	if (VisualWidget)
 	{
-		VisualWidget->InitializeSlot(ItemData, SlotIndex, InventoryComp, SlotContext, EquipmentSlot);
+		if (VisualWidget->IconImage && IconImage)
+		{
+			VisualWidget->IconImage->SetBrush(IconImage->GetBrush());
+			VisualWidget->IconImage->SetColorAndOpacity(IconImage->GetColorAndOpacity());
+		}
+
+		if (VisualWidget->ItemNameText && ItemNameText)
+		{
+			VisualWidget->ItemNameText->SetText(ItemNameText->GetText());
+		}
+
+		VisualWidget->SetToolTip(nullptr);
 		VisualWidget->SetRenderOpacity(0.5f);
 	}
 	

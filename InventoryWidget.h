@@ -137,26 +137,22 @@ protected:
 	TObjectPtr<class UTextBlock> StaminaText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<class UTextBlock> CriticalStrikeText;
+	TObjectPtr<class UTextBlock> CriticalStrikeChanceText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<class UTextBlock> MovementSpeedText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<class UTextBlock> BaseDamageText;
+	TObjectPtr<class UTextBlock> AttackDamageText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<class UTextBlock> MagicDamageText;
+	TObjectPtr<class UTextBlock> SpellDamageText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<class UTextBlock> CastSpeedText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<class UTextBlock> ArmorText;
-
-	// Number of fixed slots in the backpack (Standard MMORPG grid)
-	UPROPERTY(EditDefaultsOnly, Category = "Inventory UI|Setup")
-	int32 TotalBackpackSlots = 20;
 
 private:
 	// Orchestrator method triggered by delegates
